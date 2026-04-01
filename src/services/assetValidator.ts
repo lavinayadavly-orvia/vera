@@ -28,6 +28,14 @@ export function validateAssetUrl(url: string): ValidationResult {
 
   const urlLower = url.toLowerCase();
 
+  if (urlLower.startsWith('blob:') || urlLower.startsWith('data:image/')) {
+    return {
+      isValid: true,
+      message: '✓ Valid: locally generated preview asset',
+      source: 'local-generated'
+    };
+  }
+
   // First check: is it on the banned list?
   for (const bannedDomain of BANNED_DOMAINS) {
     if (urlLower.includes(bannedDomain)) {

@@ -80,7 +80,7 @@ export function ChangeRequestForm({ onSubmit, onCancel, isRegenerating }: Change
           <div>
             <h3 className="text-xl font-bold">Request Changes</h3>
             <p className="text-sm text-muted-foreground mt-1">
-              Describe what you'd like to change and we'll regenerate
+              Describe your feedback and DoneandDone will incorporate it into the next version
             </p>
           </div>
           <Button 
@@ -107,7 +107,7 @@ export function ChangeRequestForm({ onSubmit, onCancel, isRegenerating }: Change
             disabled={isRegenerating}
           />
           <p className="text-xs text-muted-foreground">
-            Be specific about what you want different. The more detail, the better the result.
+            Be specific about what should change, what should stay, and what matters most in the next regeneration.
           </p>
         </div>
 
@@ -189,7 +189,7 @@ export function ChangeRequestForm({ onSubmit, onCancel, isRegenerating }: Change
         </div>
 
         <p className="text-xs text-center text-muted-foreground">
-          💡 Tip: You can request changes multiple times until you're satisfied with the result
+          You can iterate as many times as needed until the output is ready.
         </p>
       </form>
     </Card>

@@ -62,6 +62,14 @@ export interface ValidationResult {
   attempt?: number;
 }
 
+export interface ValidationOptions {
+  finishReason?: string;
+  requireAudit?: boolean;
+  requireHeading?: boolean;
+  minContentLength?: number;
+  maxContentLength?: number;
+}
+
 function issue(severity: string, code: string, message: string, detail: string = ''): Issue {
   return { severity, code, message, detail };
 }
@@ -74,11 +82,12 @@ function passed(checks: Issue[]): boolean {
 // 1. STRUCTURAL INTEGRITY
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function checkStructure(text: string): Issue[] {
+export function checkStructure(text: string, options: { requireHeading?: boolean } = {}): Issue[] {
   const issues: Issue[] = [];
+  const requireHeading = options.requireHeading ?? true;
 
   // Must have at least one # heading
-  if (!/^#{1,3}\s+\S/m.test(text)) {
+  if (requireHeading && !/^#{1,3}\s+\S/m.test(text)) {
     issues.push(issue(SEVERITY.BLOCK, 'STRUCT_NO_HEADING',
       'No markdown headings found.',
       'Response must contain at least one # or ### heading.'));
@@ -125,22 +134,86 @@ export function checkStructure(text: string): Issue[] {
 // 2. HALLUCINATION SIGNAL DETECTION
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Phrases the model uses when it's making things up or uncertain
-const HALLUCINATION_PHRASES = [
-  /\bas (of|at) my (knowledge|training) (cutoff|date)\b/i,
-  /\bbased on (general|my) knowledge\b/i,
-  /\bi (believe|think|assume|recall|seem to recall)\b/i,
-  /\bit('s| is) (likely|possible|probable) that\b/i,
-  /\bi('m| am) not (sure|certain|aware)\b/i,
-  /\bi (don't|do not) have (access|specific|exact)/i,
-  /\bapproximately[\s\d]+% (of|in|among)\b/i,   // bare approx with no source
-  /\bstudies (show|suggest|indicate)\b(?!.*\(C\d{3}\))/i,  // "studies show" without claim ID
-  /\bresearch (shows|suggests|indicates)\b(?!.*\(C\d{3}\))/i,
-  /\bexperts (say|believe|suggest)\b/i,
-  /\bit (has been|is) (well[- ])?established that\b/i,
-  /\bgenerally (speaking|accepted)\b/i,
-  /\bin general\b/i,
-  /\btypically\b.*\d+%/i,  // "typically X%" without source
+interface HallucinationRule {
+  pattern: RegExp;
+  severity: string;
+  detail: string;
+}
+
+// Phrases the model uses when it's making things up or signalling weak evidence.
+// Academic framing like "studies indicate" is still worth flagging, but should
+// not hard-fail a draft on its own.
+const HALLUCINATION_RULES: HallucinationRule[] = [
+  {
+    pattern: /\bas (of|at) my (knowledge|training) (cutoff|date)\b/i,
+    severity: SEVERITY.BLOCK,
+    detail: 'Remove model self-reference and replace with a source-anchored claim.',
+  },
+  {
+    pattern: /\bbased on (general|my) knowledge\b/i,
+    severity: SEVERITY.BLOCK,
+    detail: 'Replace generic knowledge claims with approved source-backed language.',
+  },
+  {
+    pattern: /\bi (believe|think|assume|recall|seem to recall)\b/i,
+    severity: SEVERITY.BLOCK,
+    detail: 'Remove speculative first-person phrasing.',
+  },
+  {
+    pattern: /\bit('s| is) (likely|possible|probable) that\b/i,
+    severity: SEVERITY.BLOCK,
+    detail: 'Replace probabilistic hedging with evidence-backed wording.',
+  },
+  {
+    pattern: /\bi('m| am) not (sure|certain|aware)\b/i,
+    severity: SEVERITY.BLOCK,
+    detail: 'Remove uncertainty statements from final output.',
+  },
+  {
+    pattern: /\bi (don't|do not) have (access|specific|exact)/i,
+    severity: SEVERITY.BLOCK,
+    detail: 'Do not mention model limitations in the final draft.',
+  },
+  {
+    pattern: /\bapproximately[\s\d]+% (of|in|among)\b/i,
+    severity: SEVERITY.WARN,
+    detail: 'Verify approximate percentages against an approved source or add a claim anchor.',
+  },
+  {
+    pattern: /\bstudies (show|suggest|indicate)\b(?!.*\(C\d{3}\))/i,
+    severity: SEVERITY.WARN,
+    detail: 'Academic synthesis language is allowed, but should still map to a source or claim anchor.',
+  },
+  {
+    pattern: /\bresearch (shows|suggests|indicates)\b(?!.*\(C\d{3}\))/i,
+    severity: SEVERITY.WARN,
+    detail: 'Academic synthesis language is allowed, but should still map to a source or claim anchor.',
+  },
+  {
+    pattern: /\bexperts (say|believe|suggest)\b/i,
+    severity: SEVERITY.BLOCK,
+    detail: 'Replace expert-opinion shorthand with attributable evidence.',
+  },
+  {
+    pattern: /\bit (has been|is) (well[- ])?established that\b/i,
+    severity: SEVERITY.WARN,
+    detail: 'Use this only when the supporting evidence is explicit elsewhere in the draft.',
+  },
+  {
+    pattern: /\bgenerally (speaking|accepted)\b/i,
+    severity: SEVERITY.WARN,
+    detail: 'Generic consensus language should be tightened or sourced.',
+  },
+  {
+    pattern: /\bin general\b/i,
+    severity: SEVERITY.WARN,
+    detail: 'Generic framing should be tightened or sourced.',
+  },
+  {
+    pattern: /\btypically\b.*\d+%/i,
+    severity: SEVERITY.WARN,
+    detail: 'Verify percentage claims against a specific approved source.',
+  },
 ];
 
 // Fake citation patterns — model inventing references
@@ -155,12 +228,12 @@ const FAKE_CITATION_PATTERNS = [
 export function checkHallucinations(text: string): Issue[] {
   const issues: Issue[] = [];
 
-  HALLUCINATION_PHRASES.forEach((pattern, i) => {
-    const match = text.match(pattern);
+  HALLUCINATION_RULES.forEach((rule, i) => {
+    const match = text.match(rule.pattern);
     if (match) {
-      issues.push(issue(SEVERITY.BLOCK, `HALLUC_PHRASE_${i}`,
+      issues.push(issue(rule.severity, `HALLUC_PHRASE_${i}`,
         `Hallucination signal detected: "${match[0]}"`,
-        'Remove hedging language or replace with a source-anchored claim.'));
+        rule.detail));
     }
   });
 
@@ -298,7 +371,7 @@ export function checkInjection(text: string): Issue[] {
   });
 
   // Detect raw HTML tags (shouldn't appear in markdown medical content)
-  const htmlTags = text.match(/<[a-z]+[\s>]/gi) || [];
+  const htmlTags: string[] = text.match(/<[a-z]+[\s>]/gi) || [];
   const allowedTags = ['<br', '<b>', '<i>', '<em>', '<strong>', '<sup>', '<sub>'];
   const badTags = htmlTags.filter(t => !allowedTags.some(a => t.toLowerCase().startsWith(a)));
   if (badTags.length > 0) {
@@ -489,19 +562,24 @@ const PADDING_PHRASES = [
   /\bin (today's|this) (article|post|piece|response|output)\b/gi,
 ];
 
-export function checkLength(text: string): Issue[] {
+export function checkLength(
+  text: string,
+  options: { minContentLength?: number; maxContentLength?: number } = {},
+): Issue[] {
   const issues: Issue[] = [];
   const len = text.length;
+  const minContentLength = options.minContentLength ?? CONFIG.MIN_CONTENT_LENGTH;
+  const maxContentLength = options.maxContentLength ?? CONFIG.MAX_CONTENT_LENGTH;
 
-  if (len < CONFIG.MIN_CONTENT_LENGTH) {
+  if (len < minContentLength) {
     issues.push(issue(SEVERITY.BLOCK, 'LENGTH_TOO_SHORT',
-      `Content is ${len} characters — below minimum ${CONFIG.MIN_CONTENT_LENGTH}.`,
+      `Content is ${len} characters — below minimum ${minContentLength}.`,
       'Response is too thin. Regenerate with higher min length instruction.'));
   }
 
-  if (len > CONFIG.MAX_CONTENT_LENGTH) {
+  if (len > maxContentLength) {
     issues.push(issue(SEVERITY.WARN, 'LENGTH_TOO_LONG',
-      `Content is ${len} characters — above maximum ${CONFIG.MAX_CONTENT_LENGTH}.`,
+      `Content is ${len} characters — above maximum ${maxContentLength}.`,
       'Consider splitting into multiple infographic sections.'));
   }
 
@@ -559,12 +637,13 @@ export function checkEncoding(text: string): Issue[] {
 // 10. SOURCE AUDIT GATE
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function checkSourceAudit(text: string): Issue[] {
+export function checkSourceAudit(text: string, options: { requireClaimIds?: boolean } = {}): Issue[] {
   const issues: Issue[] = [];
+  const requireClaimIds = options.requireClaimIds ?? CONFIG.REQUIRE_CLAIM_IDS;
 
   // Verify claim IDs exist at all
   const claimIds = text.match(/\(C\d{3,4}\)/g) || [];
-  if (claimIds.length === 0 && CONFIG.REQUIRE_CLAIM_IDS) {
+  if (claimIds.length === 0 && requireClaimIds) {
     issues.push(issue(SEVERITY.BLOCK, 'AUDIT_NO_CLAIM_IDS',
       'No CLAIM_IDs (CXXX) found in output.',
       'Every factual claim must be anchored to a source document via its CLAIM_ID.'));
@@ -597,24 +676,27 @@ export function checkSourceAudit(text: string): Issue[] {
  * ─────────────────────────────
  * Run all checks against an AI response.
  */
-export function validateOutput(text: string, options: any = {}): ValidationResult {
-  const finishReason   = options.finishReason  ?? 'stop';
-  const requireAudit   = options.requireAudit  ?? CONFIG.REQUIRE_CLAIM_IDS;
+export function validateOutput(text: string, options: ValidationOptions = {}): ValidationResult {
+  const finishReason = options.finishReason ?? 'stop';
+  const requireAudit = options.requireAudit ?? CONFIG.REQUIRE_CLAIM_IDS;
+  const requireHeading = options.requireHeading ?? true;
+  const minContentLength = options.minContentLength ?? CONFIG.MIN_CONTENT_LENGTH;
+  const maxContentLength = options.maxContentLength ?? CONFIG.MAX_CONTENT_LENGTH;
 
   const originalConfig = CONFIG.REQUIRE_CLAIM_IDS;
   CONFIG.REQUIRE_CLAIM_IDS = requireAudit;
 
   const allIssues = [
-    ...checkStructure(text),
+    ...checkStructure(text, { requireHeading }),
     ...checkHallucinations(text),
     ...checkRepetition(text),
     ...checkTruncation(text, finishReason),
     ...checkInjection(text),
     ...checkMedicalClaims(text),
     ...checkCoherence(text),
-    ...checkLength(text),
+    ...checkLength(text, { minContentLength, maxContentLength }),
     ...checkEncoding(text),
-    ...checkSourceAudit(text),
+    ...checkSourceAudit(text, { requireClaimIds: requireAudit }),
   ];
 
   CONFIG.REQUIRE_CLAIM_IDS = originalConfig;

@@ -1,4 +1,9 @@
 export interface RealWorldInfographicData {
+  layout: {
+    mode: 'snapshot' | 'comparison' | 'process' | 'timeline' | 'framework';
+    barSectionTitle: string;
+    recommendationsTitle: string;
+  };
   tags: {
     format: string;
     extent: string;
@@ -54,7 +59,16 @@ export function compileInfographicHtml(data: RealWorldInfographicData): string {
   const currentDate = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 
   // Helper to safely inject variables
-  const safe = (str: string | undefined | null) => str ? str.replace(/</g, '&lt;').replace(/>/g, '&gt;') : '';
+  const safe = (str: string | undefined | null) => {
+    if (!str) return '';
+
+    return str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  };
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -296,7 +310,7 @@ html, body {
   </div>
 
   <div class="data-bars">
-    <div class="section-label">Core Metrics Analysis</div>
+    <div class="section-label">${safe(data.layout.barSectionTitle)}</div>
     ${data.dataBars.map(bar => `
       <div class="bar-row">
         <div class="bar-label">${safe(bar.label)} <span>${safe(bar.sublabel)}</span></div>
@@ -324,7 +338,7 @@ html, body {
   </div>
 
   <div class="recs">
-    <div class="section-label">Strategic Recommendations</div>
+    <div class="section-label">${safe(data.layout.recommendationsTitle)}</div>
     <div class="rec-grid">
       ${data.recommendations.map((rec, i) => `
         <div class="rec-item">

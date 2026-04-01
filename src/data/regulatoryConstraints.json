@@ -1,0 +1,103 @@
+{
+  "version": "2026.03.28",
+  "rules": [
+    {
+      "id": "global-medical-traceability",
+      "market": "global",
+      "namespace": "medical",
+      "regulatoryContentTypes": ["scientific-exchange", "medical-information", "patient-education", "policy"],
+      "title": "Global medical traceability baseline",
+      "prohibitedTerms": [],
+      "requiredDisclaimers": [
+        "Every clinical or scientific claim must remain traceable to an approved source."
+      ],
+      "notes": [
+        "Use the evidence dossier and reference manager for traceability review."
+      ]
+    },
+    {
+      "id": "india-ucpmp-promotional-terms",
+      "market": "india",
+      "namespace": "marketing",
+      "regulatoryContentTypes": ["promotional"],
+      "title": "India UCPMP superlative control",
+      "prohibitedTerms": ["best", "unique", "novel", "superior", "first-in-class", "revolutionary"],
+      "requiredDisclaimers": [
+        "Comparative or superiority wording requires head-to-head RCT support before approval."
+      ],
+      "notes": [
+        "Flag superlatives unless head-to-head evidence exists in the approved source pack."
+      ]
+    },
+    {
+      "id": "singapore-source-currency",
+      "market": "singapore",
+      "namespace": "medical",
+      "regulatoryContentTypes": ["scientific-exchange", "medical-information", "patient-education", "policy"],
+      "title": "Singapore source currency re-validation",
+      "maxReferenceAgeYears": 5,
+      "requiredDisclaimers": [
+        "Any evidence older than 5 years requires explicit re-validation before final approval."
+      ],
+      "notes": [
+        "Surface older references as advisory findings for medical review."
+      ]
+    },
+    {
+      "id": "dubai-arabic-transliteration",
+      "market": "dubai",
+      "namespace": "medical",
+      "regulatoryContentTypes": ["patient-education", "disease-awareness"],
+      "title": "Dubai Arabic transliteration review",
+      "requiredDisclaimers": [
+        "Arabic transliteration review is required for patient-facing medical terminology."
+      ],
+      "notes": [
+        "Highlight jargon so localization teams can confirm plain-English and Arabic consistency."
+      ]
+    },
+    {
+      "id": "germany-promotional-smpc",
+      "market": "germany",
+      "namespace": "marketing",
+      "regulatoryContentTypes": ["promotional"],
+      "title": "Germany promotional SmPC alignment",
+      "requiresSmPCTable": true,
+      "requiredDisclaimers": [
+        "Check every promotional claim against the current SmPC table before release."
+      ],
+      "notes": [
+        "Promotional content for Germany should not proceed without current label / SmPC alignment."
+      ]
+    },
+    {
+      "id": "us-promotional-black-box",
+      "market": "us",
+      "namespace": "marketing",
+      "regulatoryContentTypes": ["promotional"],
+      "title": "US boxed-warning / fair-balance review",
+      "requiresBlackBoxDisclaimer": true,
+      "requiredDisclaimers": [
+        "Confirm boxed-warning, contraindication, and fair-balance requirements before release."
+      ],
+      "notes": [
+        "Escalate branded promotional content for legal and regulatory review when high-risk safety signals are present."
+      ]
+    },
+    {
+      "id": "uk-promotional-abpi",
+      "market": "uk",
+      "namespace": "marketing",
+      "regulatoryContentTypes": ["promotional"],
+      "title": "UK ABPI promotional substantiation",
+      "prohibitedTerms": ["guaranteed", "safe", "best", "cure"],
+      "requiresSmPCTable": true,
+      "requiredDisclaimers": [
+        "Promotional claims must remain consistent with the current SPC and ABPI substantiation standards."
+      ],
+      "notes": [
+        "Flag absolute safety or efficacy language and require current prescribing reference alignment."
+      ]
+    }
+  ]
+}

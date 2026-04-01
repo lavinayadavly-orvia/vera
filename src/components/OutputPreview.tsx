@@ -1,7 +1,7 @@
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Download, Share2, Sparkles, ChevronLeft, ChevronRight, ExternalLink, Image, RefreshCw, Check, CheckCircle2, MessageSquare, ThumbsUp, Headphones, FileText, Code } from 'lucide-react';
+import { Download, Share2, Sparkles, ChevronLeft, ChevronRight, ExternalLink, Image, RefreshCw, Check, CheckCircle2, MessageSquare, ThumbsUp, Headphones, FileText, Code, Video } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import type { GeneratedOutput } from '@/types';
 import { useState } from 'react';
@@ -10,6 +10,12 @@ import { EditSuggestionChat } from '@/components/EditSuggestionChat';
 import { analyticsService } from '@/services/analytics';
 import { SampleGalleryModal } from '@/components/SampleGalleryModal';
 import { sampleData } from '@/data/sampleData';
+import { downloadAudioFile, downloadHtmlDocument, downloadJsonManifest, downloadMarkdown, downloadPresentationOutline, downloadPrimaryVisual, downloadStoryboard, downloadWordCompatibleDocument } from '@/utils/exporters';
+import { renderMarkdownToHtml } from '@/utils/markdownRenderer';
+import { ReferenceManagerPanel } from '@/components/ReferenceManagerPanel';
+import { ComplianceArchitecturePanel } from '@/components/ComplianceArchitecturePanel';
+import { ContentLibraryPanel } from '@/components/ContentLibraryPanel';
+import { AuditDashboardPanel } from '@/components/AuditDashboardPanel';
 
 interface OutputPreviewProps {
   output: GeneratedOutput;
@@ -36,42 +42,24 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
     const formats: Record<string, string> = {
       'image': 'PNG Image',
       'pdf': 'PDF Document',
-      'mp4': 'MP4 Video',
-      'video-script': 'Video Script + Thumbnail',
-      'video-frames': 'Video Scenes (Ready to Edit)',
-      'audio-script': 'Podcast Script + Cover',
-      'white-paper': 'White Paper + Cover',
-      'pptx': 'PowerPoint Presentation',
-      'docx': 'Word Document',
+      'mp4': 'Video File',
+      'video-script': 'Video Script + Cover',
+      'video-frames': 'Storyboard + Scene Frames',
+      'audio-script': 'Podcast Script + Audio',
+      'white-paper': 'White Paper',
+      'pptx': 'Presentation Package',
+      'docx': 'Document Package',
       'carousel': 'Carousel (Multiple Slides)'
     };
     return formats[output.format] || output.format.toUpperCase();
   };
 
-  const downloadTextFile = (type: 'md' | 'html') => {
-    const t = (output.theme || 'content').replace(/\s+/g, '_').toLowerCase();
-    let blob: Blob, ext: string;
-    
-    if (type === 'md') {
-      blob = new Blob([output.content], { type: 'text/markdown' });
-      ext = 'md';
-    } else {
-      const h = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${output.theme}</title><link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Outfit:wght@300;400;500&display=swap" rel="stylesheet"><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Outfit',sans-serif;background:#0E0F13;color:#F5F0E8;max-width:820px;margin:0 auto;padding:60px 36px 80px;line-height:1.85}h1{font-family:'Syne',sans-serif;font-size:32px;font-weight:800;letter-spacing:-1px;margin-bottom:6px}h2{font-size:18px;color:rgba(245,240,232,.5);font-weight:300;margin-bottom:28px}h3{font-family:'Syne',sans-serif;font-size:15px;font-weight:700;margin:28px 0 10px;color:#FF5C3A}ul,ol{margin:0 0 16px 20px}li{margin-bottom:6px;color:rgba(245,240,232,.7)}p{color:rgba(245,240,232,.7);margin-bottom:14px;font-weight:300}.meta{font-size:12px;color:rgba(245,240,232,.3);margin-bottom:32px;display:flex;gap:12px;flex-wrap:wrap}.meta span{background:rgba(255,92,58,.15);color:#FF7A5C;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600}.footer{margin-top:56px;font-size:12px;color:rgba(245,240,232,.25);border-top:1px solid rgba(245,240,232,.08);padding-top:16px}.logo{display:inline-flex;margin-bottom:40px;font-family:'Syne',sans-serif;font-size:13px;font-weight:800}.d1{background:#FF5C3A;color:#0E0F13;padding:5px 10px;border-radius:5px 0 0 5px}.d2{background:#F5F0E8;color:#0E0F13;padding:5px 10px;border-radius:0 5px 5px 0}</style></head><body><div class="logo"><span class="d1">Done</span><span class="d2">andDone</span></div><h1>${output.theme}</h1><div class="meta"><span>${output.format}</span><span>${output.extent}</span><span>${output.audience}</span></div><div style="white-space:pre-wrap">${output.content.replace(/</g,'&lt;')}</div><div class="footer">Prepared by DoneandDone · Medical Affairs Content Studio · Medical Affairs Review Recommended</div></body></html>`;
-      blob = new Blob([h], { type: 'text/html' });
-      ext = 'html';
-    }
-    
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `doneanddone_${t}.${ext}`;
-    a.click();
-    URL.revokeObjectURL(url);
-    
-    toast({
-      title: `${ext.toUpperCase()} Downloaded`,
-      description: 'Your file is ready.'
-    });
+  const getMarketLabel = () => {
+    if (!output.market) return null;
+    if (output.market === 'dubai') return 'Dubai / UAE';
+    if (output.market === 'us') return 'United States';
+    if (output.market === 'uk') return 'United Kingdom';
+    return output.market.charAt(0).toUpperCase() + output.market.slice(1);
   };
 
   const nextSlide = () => {
@@ -97,8 +85,44 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
   const isWhitePaper = output.format === 'white-paper';
   const isInfographic = output.contentType === 'infographic';
   const isHtmlDocument = output.format === 'html';
-  const isTextDocument = isVideoScript || isAudioScript || isWhitePaper || (isInfographic && !isHtmlDocument);
+  const isPresentation = output.contentType === 'presentation';
+  const isDocument = output.contentType === 'document';
+  const isReport = output.contentType === 'report';
+  const isPodcast = output.contentType === 'podcast';
+  const isWhitePaperContent = output.contentType === 'white-paper';
+  const isTextDocument = isVideoScript
+    || isAudioScript
+    || isWhitePaper
+    || isPresentation
+    || isDocument
+    || isReport
+    || isPodcast
+    || isWhitePaperContent
+    || (isInfographic && !isHtmlDocument);
   const isVideoFrames = output.format === 'video-frames';
+  const infographicFrameHeight = output.renderVariant === 'poster' ? 'h-[1123px]' : 'h-[1680px]';
+  const renderedTextDocumentHtml = renderMarkdownToHtml(output.content);
+  const textDocumentLabel = isVideoScript
+    ? 'Video Script & Storyboard'
+    : isAudioScript
+      ? 'Podcast Dialogue Script'
+      : isPresentation
+        ? 'Presentation Outline'
+        : isDocument
+          ? 'Document Draft'
+          : isReport
+            ? 'Report Draft'
+            : isWhitePaperContent || isWhitePaper
+              ? 'White Paper Draft'
+              : isInfographic
+                ? 'Infographic Content & Layout'
+                : 'Generated Content';
+  const getSuitabilityClasses = (suitability?: 'P' | 'S' | 'C' | 'X') => {
+    if (suitability === 'P') return 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20';
+    if (suitability === 'S') return 'bg-blue-500/10 text-blue-700 border-blue-500/20';
+    if (suitability === 'C') return 'bg-amber-500/10 text-amber-700 border-amber-500/20';
+    return 'bg-muted text-muted-foreground border-border';
+  };
 
   return (
     <div className="w-full max-w-5xl mx-auto space-y-6 animate-fade-in">
@@ -107,6 +131,7 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
           <h2 className="text-2xl font-bold">Your Content is Ready!</h2>
           <p className="text-muted-foreground mt-1">
             Generated {output.contentType.replace('-', ' ')} • {getFormatLabel()}
+            {getMarketLabel() && ` • ${getMarketLabel()}`}
             {hasCarousel && ` • ${totalSlides} slides`}
             {hasVideoScenes && ` • ${output.videoScenes!.length} scenes`}
             {iterationNumber > 1 && ` • Version ${iterationNumber}`}
@@ -156,10 +181,18 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
                       </div>
                       <div>
                         <p className="font-semibold text-sm">
-                          {isVideoScript ? 'Video Script' : isAudioScript ? 'Podcast Script' : isWhitePaper ? 'White Paper' : isInfographic ? 'Infographic' : 'Document'} Generated
+                          {textDocumentLabel} Generated
                         </p>
                         <p className="text-xs text-white/80">
-                          {isAudioScript ? 'Full audio script + cover art' : isWhitePaper ? 'Comprehensive document + cover art' : isInfographic ? 'Structured content + layout template' : 'Professional storyboard + thumbnail'}
+                          {isAudioScript
+                            ? 'Full audio script, preview audio, and cover art'
+                            : isPresentation
+                              ? 'Slide structure, talking points, and export-ready outline'
+                              : isDocument || isReport || isWhitePaperContent || isWhitePaper
+                                ? 'Structured long-form draft with export options'
+                                : isInfographic
+                                  ? 'Structured content + layout template'
+                                  : 'Professional storyboard + thumbnail'}
                         </p>
                       </div>
                     </div>
@@ -260,13 +293,13 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
             <div className="flex items-center justify-between">
               <h3 className="font-semibold text-lg flex items-center gap-2">
                 <MessageSquare className="w-5 h-5 text-primary" />
-                {isVideoScript ? 'Video Script & Storyboard' : isAudioScript ? 'Podcast Dialogue Script' : isInfographic ? 'Infographic Content & Layout' : 'White Paper Content'}
+                {textDocumentLabel}
               </h3>
               <Button 
                 variant="outline" 
                 size="sm"
                 onClick={() => {
-                  const docTitle = isVideoScript ? 'Video Script' : isAudioScript ? 'Podcast Script' : isInfographic ? 'Infographic Content' : 'White Paper';
+                  const docTitle = textDocumentLabel;
                   const scriptWindow = window.open('', '_blank');
                   if (scriptWindow) {
                     scriptWindow.document.write(`
@@ -274,14 +307,26 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
                         <head>
                           <title>${docTitle}</title>
                           <style>
-                            body { font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; line-height: 1.6; }
-                            h1 { color: #333; border-bottom: 3px solid #7C3AED; padding-bottom: 10px; }
-                            pre { background: #f4f4f4; padding: 15px; border-radius: 8px; white-space: pre-wrap; font-family: inherit; }
+                            body { font-family: Inter, ui-sans-serif, system-ui, sans-serif; background: #f8f8fb; color: #1f2937; max-width: 920px; margin: 0 auto; padding: 48px 24px 80px; line-height: 1.7; }
+                            h1 { font-size: 2.25rem; line-height: 1.15; margin: 0 0 1.25rem; font-weight: 800; color: #111827; }
+                            h2 { font-size: 1.5rem; line-height: 1.25; margin: 2.25rem 0 0.85rem; font-weight: 700; color: #111827; }
+                            h3 { font-size: 1.125rem; line-height: 1.35; margin: 1.6rem 0 0.65rem; font-weight: 700; color: #1f2937; }
+                            p { margin: 0 0 1rem; color: #374151; }
+                            ul, ol { margin: 0 0 1.15rem 1.25rem; padding-left: 1rem; }
+                            li { margin: 0.35rem 0; color: #374151; }
+                            hr { border: 0; border-top: 1px solid #e5e7eb; margin: 2rem 0; }
+                            strong { font-weight: 700; color: #111827; }
+                            em { font-style: italic; }
+                            code { background: #eef2ff; color: #4f46e5; padding: 0.1rem 0.35rem; border-radius: 0.35rem; font-size: 0.92em; }
+                            blockquote { margin: 1.25rem 0; padding: 0.25rem 0 0.25rem 1rem; border-left: 4px solid #8b5cf6; background: rgba(139, 92, 246, 0.05); }
+                            .doc-shell { background: #ffffff; border: 1px solid #e5e7eb; border-radius: 20px; box-shadow: 0 20px 60px rgba(15, 23, 42, 0.08); padding: 32px 36px; }
                           </style>
                         </head>
                         <body>
-                          <h1>${docTitle}</h1>
-                          <pre>${output.content}</pre>
+                          <div class="doc-shell">
+                            <h1>${docTitle}</h1>
+                            ${renderedTextDocumentHtml}
+                          </div>
                         </body>
                       </html>
                     `);
@@ -293,11 +338,22 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
                 View Full Document
               </Button>
             </div>
-            <div className="bg-muted/50 rounded-lg p-4 max-h-64 overflow-y-auto">
-              <pre className="text-sm whitespace-pre-wrap font-mono">{output.content.slice(0, 1000)}...</pre>
+            <div className="bg-background rounded-xl border p-6 max-h-[420px] overflow-y-auto shadow-inner
+              [&_h1]:text-3xl [&_h1]:font-bold [&_h1]:tracking-tight [&_h1]:text-foreground [&_h1]:mb-5 [&_h1]:mt-0
+              [&_h2]:text-2xl [&_h2]:font-bold [&_h2]:text-foreground [&_h2]:mt-8 [&_h2]:mb-3
+              [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:text-foreground [&_h3]:mt-6 [&_h3]:mb-2
+              [&_p]:text-sm [&_p]:leading-7 [&_p]:text-foreground/80 [&_p]:mb-4
+              [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:mb-4
+              [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:mb-4
+              [&_li]:text-sm [&_li]:leading-7 [&_li]:text-foreground/80 [&_li]:mb-1.5
+              [&_hr]:my-6 [&_hr]:border-border
+              [&_strong]:font-semibold [&_strong]:text-foreground
+              [&_code]:rounded [&_code]:bg-primary/10 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-primary
+              [&_blockquote]:border-l-4 [&_blockquote]:border-primary/40 [&_blockquote]:bg-primary/5 [&_blockquote]:px-4 [&_blockquote]:py-2 [&_blockquote]:my-4">
+              <div dangerouslySetInnerHTML={{ __html: renderedTextDocumentHtml }} />
             </div>
             <p className="text-xs text-muted-foreground italic">
-              Click "View Full Document" to see the complete text content and production notes.
+              Click "View Full Document" to see the fully formatted draft.
             </p>
           </div>
         )}
@@ -329,10 +385,10 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
             </div>
 
             <div className="w-full bg-background rounded-2xl overflow-hidden border shadow-inner mt-4">
-               {/* 1123px height matches A4 vertical aspect exactly */}
+               {/* Long-form infographic preview */}
                <iframe 
                  srcDoc={output.content}
-                 className="w-full h-[1123px] border-none"
+                 className={`w-full ${infographicFrameHeight} border-none`}
                  title="Infographic Preview"
                  sandbox="allow-same-origin allow-scripts"
                />
@@ -443,6 +499,27 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
                 Content enhanced with {output.sources.length} {output.sources.length === 1 ? 'source' : 'sources'}
               </p>
             </div>
+            {output.sourceGovernance && (
+              <div className="rounded-xl border bg-background/60 p-4 space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="px-2.5 py-1 rounded-full text-xs font-medium border bg-primary/10 text-primary border-primary/20">
+                    {output.sourceGovernance.communicationFormat}
+                  </span>
+                  <span className="px-2.5 py-1 rounded-full text-xs font-medium border bg-background text-muted-foreground">
+                    {output.sourceGovernance.evidenceUseCaseLabel}
+                  </span>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  <span className="font-medium text-foreground">Minimum standard:</span> {output.sourceGovernance.minimumSourceStandard}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">Non-negotiables:</span> {output.sourceGovernance.nonNegotiables.slice(0, 2).join(' · ')}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">Common failure risks:</span> {output.sourceGovernance.commonFailures.slice(0, 2).join(' · ')}
+                </p>
+              </div>
+            )}
             <div className="grid gap-3">
               {output.sources.map((source, index) => (
                 <div
@@ -456,6 +533,28 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
                       {source.section && ` • ${source.section}`}
                       {source.page && ` • p. ${source.page}`}
                     </div>
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {source.suitability && (
+                        <span className={`px-2 py-0.5 rounded-full border text-[11px] font-medium ${getSuitabilityClasses(source.suitability)}`}>
+                          {source.suitability === 'P' ? 'Primary' : source.suitability === 'S' ? 'Supporting' : source.suitability === 'C' ? 'Contextual' : 'Excluded'}
+                        </span>
+                      )}
+                      {source.tier && (
+                        <span className="px-2 py-0.5 rounded-full border text-[11px] font-medium bg-background text-muted-foreground">
+                          {source.tier}
+                        </span>
+                      )}
+                      {source.sourceType && (
+                        <span className="px-2 py-0.5 rounded-full border text-[11px] font-medium bg-background text-muted-foreground">
+                          {source.sourceType}
+                        </span>
+                      )}
+                    </div>
+                    {source.screeningSummary && (
+                      <div className="text-xs text-muted-foreground mt-2">
+                        {source.screeningSummary}
+                      </div>
+                    )}
                   </div>
                   {source.url && source.type === 'web' && (
                     <a
@@ -481,13 +580,129 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
       {/* Fallback message if no sources */}
       {(!output.sources || output.sources.length === 0) && (
         <Card className="p-6 bg-card/60 backdrop-blur-sm border shadow-md">
-          <div className="text-center space-y-2">
+          <div className="text-center space-y-3">
             <h3 className="text-lg font-semibold">Sources</h3>
+            {output.sourceGovernance && (
+              <p className="text-sm text-muted-foreground">
+                Evidence profile: <span className="font-medium text-foreground">{output.sourceGovernance.communicationFormat}</span> · {output.sourceGovernance.evidenceUseCaseLabel}
+              </p>
+            )}
             <p className="text-sm text-muted-foreground italic">
               Content generated from general knowledge; no specific sources retrieved.
             </p>
           </div>
         </Card>
+      )}
+
+      {output.operationalGuardrails && (
+        <Card className="p-6 bg-card/60 backdrop-blur-sm border shadow-md">
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-lg font-semibold mb-1">Operational Guardrails</h3>
+              <p className="text-sm text-muted-foreground">
+                Market: {output.operationalGuardrails.market === 'dubai' ? 'Dubai / UAE' : output.operationalGuardrails.market === 'us' ? 'United States' : output.operationalGuardrails.market === 'uk' ? 'United Kingdom' : output.operationalGuardrails.market.charAt(0).toUpperCase() + output.operationalGuardrails.market.slice(1)} · {output.operationalGuardrails.summary}
+              </p>
+            </div>
+
+            {output.operationalGuardrails.issues.length > 0 ? (
+              <div className="grid gap-3">
+                {output.operationalGuardrails.issues.map((issue, index) => (
+                  <div
+                    key={`${issue.code}-${index}`}
+                    className={`rounded-lg border p-3 ${
+                      issue.severity === 'block'
+                        ? 'border-red-500/30 bg-red-500/5'
+                        : issue.severity === 'warn'
+                          ? 'border-amber-500/30 bg-amber-500/5'
+                          : 'border-blue-500/20 bg-blue-500/5'
+                    }`}
+                  >
+                    <div className="flex flex-wrap items-center gap-2 mb-1">
+                      <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium border ${
+                        issue.severity === 'block'
+                          ? 'border-red-500/30 text-red-700 bg-red-500/10'
+                          : issue.severity === 'warn'
+                            ? 'border-amber-500/30 text-amber-700 bg-amber-500/10'
+                            : 'border-blue-500/30 text-blue-700 bg-blue-500/10'
+                      }`}>
+                        {issue.severity.toUpperCase()}
+                      </span>
+                      <span className="font-medium text-sm">{issue.title}</span>
+                    </div>
+                    <p className="text-sm text-muted-foreground">{issue.message}</p>
+                    {issue.suggestions && issue.suggestions.length > 0 && (
+                      <p className="text-xs text-muted-foreground mt-2">
+                        Suggestions: {issue.suggestions.slice(0, 4).join(' · ')}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">No market, literacy, or source-sufficiency issues were flagged.</p>
+            )}
+
+            {output.operationalGuardrails.readability && (
+              <div className="rounded-lg border bg-background/50 p-4">
+                <p className="text-sm font-medium">Readability</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {output.operationalGuardrails.readability.scoreName} grade:
+                  {' '}
+                  {output.operationalGuardrails.readability.gradeLevel?.toFixed(1) ?? 'Unavailable'}
+                  {' · '}
+                  Target: {output.operationalGuardrails.readability.targetLabel}
+                </p>
+                {output.operationalGuardrails.readability.simplifiedEquivalents.length > 0 && (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Simplified equivalents: {output.operationalGuardrails.readability.simplifiedEquivalents.slice(0, 5).map((pair) => `${pair.from} -> ${pair.to}`).join(' · ')}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {output.operationalGuardrails.evidenceMap && output.operationalGuardrails.evidenceMap.length > 0 && (
+              <div className="rounded-lg border bg-background/50 p-4 space-y-3">
+                <p className="text-sm font-medium">Evidence Map</p>
+                <div className="grid gap-2">
+                  {output.operationalGuardrails.evidenceMap.slice(0, 8).map((entry) => (
+                    <div key={entry.claimId} className="text-xs text-muted-foreground">
+                      <span className="font-medium text-foreground">{entry.claimId}</span>
+                      {' · '}
+                      {entry.sourceTitle}
+                      {' · '}
+                      {entry.locator}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
+
+      {output.complianceArchitecture && (
+        <ComplianceArchitecturePanel
+          summary={output.complianceArchitecture}
+          market={output.market}
+        />
+      )}
+
+      {output.complianceArchitecture && (
+        <ContentLibraryPanel
+          library={output.complianceArchitecture.contentLibrary}
+          withdrawalMonitor={output.complianceArchitecture.withdrawalMonitor}
+        />
+      )}
+
+      {output.complianceArchitecture && output.market && (
+        <AuditDashboardPanel
+          dashboard={output.complianceArchitecture.auditDashboard}
+          currentMarket={output.market}
+        />
+      )}
+
+      {output.complianceArchitecture?.dossier && output.complianceArchitecture.dossier.claims.length > 0 && (
+        <ReferenceManagerPanel dossier={output.complianceArchitecture.dossier} />
       )}
 
       {/* Feedback and Edit Chat Tabs */}
@@ -556,10 +771,25 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
       )}
 
       <div className="flex gap-3 flex-wrap">
-        {isTextDocument && (
-          <Button 
+        {(isTextDocument || isHtmlDocument) && (
+          <Button
             onClick={() => {
               analyticsService.trackDownloadClicked(output.contentType);
+              if (isHtmlDocument) {
+                const printWindow = window.open('', '_blank');
+                if (printWindow) {
+                  printWindow.document.write(output.content);
+                  printWindow.document.close();
+                  printWindow.focus();
+                  setTimeout(() => printWindow.print(), 400);
+                }
+                toast({
+                  title: 'PDF Print View Opened',
+                  description: 'Use your browser print dialog to save the HTML render as PDF.'
+                });
+                return;
+              }
+
               import('@/utils/pdfGenerator').then(({ generateAndDownloadPDF }) => {
                 generateAndDownloadPDF(output.content, {
                   format: output.format || output.contentType,
@@ -569,24 +799,46 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
                 });
                 toast({
                   title: 'PDF Downloaded',
-                  description: 'Your branded typography PDF is ready.'
+                  description: 'Your branded PDF is ready.'
                 });
               });
-            }} 
-            size="lg" 
+            }}
+            size="lg"
             className="flex-1 text-base font-semibold"
           >
             <Download className="w-5 h-5 mr-2" />
-            Download PDF Document
+            PDF
+          </Button>
+        )}
+        {(isTextDocument || isHtmlDocument) && (
+          <Button
+            onClick={() => {
+              analyticsService.trackDownloadClicked(output.contentType);
+              downloadHtmlDocument(output);
+              toast({
+                title: 'HTML Downloaded',
+                description: 'Your export-ready HTML file is ready.'
+              });
+            }}
+            size="lg"
+            variant="outline"
+            className="flex-1 text-base font-semibold"
+          >
+            <Code className="w-5 h-5 mr-2" />
+            HTML
           </Button>
         )}
         {isTextDocument && (
-          <Button 
+          <Button
             onClick={() => {
               analyticsService.trackDownloadClicked(output.contentType);
-              downloadTextFile('md');
-            }} 
-            size="lg" 
+              downloadMarkdown(output);
+              toast({
+                title: 'Markdown Downloaded',
+                description: 'Your editable markdown file is ready.'
+              });
+            }}
+            size="lg"
             variant="outline"
             className="flex-1 text-base font-semibold"
           >
@@ -594,43 +846,118 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
             Markdown
           </Button>
         )}
-        {isTextDocument && (
-          <Button 
+        {isTextDocument && !isPresentation && (
+          <Button
             onClick={() => {
               analyticsService.trackDownloadClicked(output.contentType);
-              downloadTextFile('html');
-            }} 
-            size="lg" 
+              downloadWordCompatibleDocument(output);
+              toast({
+                title: 'Word Document Downloaded',
+                description: 'Your Word-compatible .doc export is ready.'
+              });
+            }}
+            size="lg"
+            variant="outline"
+            className="flex-1 text-base font-semibold"
+          >
+            <FileText className="w-5 h-5 mr-2" />
+            Word Doc
+          </Button>
+        )}
+        {isPresentation && (
+          <Button
+            onClick={() => {
+              analyticsService.trackDownloadClicked(output.contentType);
+              downloadPresentationOutline(output);
+              toast({
+                title: 'Slide Outline Downloaded',
+                description: 'Your PowerPoint-ready outline (.rtf) is ready.'
+              });
+            }}
+            size="lg"
+            variant="outline"
+            className="flex-1 text-base font-semibold"
+          >
+            <FileText className="w-5 h-5 mr-2" />
+            Slide Outline
+          </Button>
+        )}
+        {hasVideoScenes && (
+          <Button
+            onClick={() => {
+              analyticsService.trackDownloadClicked(output.contentType);
+              downloadStoryboard(output);
+              toast({
+                title: 'Storyboard Downloaded',
+                description: 'Your scene-by-scene storyboard HTML is ready.'
+              });
+            }}
+            size="lg"
+            variant="outline"
+            className="flex-1 text-base font-semibold"
+          >
+            <Video className="w-5 h-5 mr-2" />
+            Storyboard
+          </Button>
+        )}
+        {hasVideoScenes && (
+          <Button
+            onClick={() => {
+              analyticsService.trackDownloadClicked(output.contentType);
+              downloadJsonManifest(output, 'scene_manifest', {
+                title: output.theme,
+                contentType: output.contentType,
+                scenes: output.videoScenes
+              });
+              toast({
+                title: 'Scene Manifest Downloaded',
+                description: 'Your production JSON manifest is ready.'
+              });
+            }}
+            size="lg"
             variant="outline"
             className="flex-1 text-base font-semibold"
           >
             <Code className="w-5 h-5 mr-2" />
-            HTML Copy
+            Scene JSON
           </Button>
         )}
-        <Button 
-          onClick={() => {
-            analyticsService.trackDownloadClicked(output.contentType);
-            if (isTextDocument) {
-              // Download thumbnail image
-              if(output.downloadUrl) {
-                window.open(output.downloadUrl, '_blank');
-              }
+        {output.audioUrl && (
+          <Button
+            onClick={() => {
+              analyticsService.trackDownloadClicked(output.contentType);
+              downloadAudioFile(output);
               toast({
-                title: 'Cover Image Downloaded',
-                description: 'Use "View Full Document" button above to access the complete text.',
+                title: 'Audio Download Started',
+                description: 'Your generated audio is opening in a downloadable tab.'
               });
-            } else {
-              onDownload();
-            }
-          }} 
-          size="lg" 
-          variant={isTextDocument ? "outline" : "default"}
-          className="flex-1 text-base font-semibold"
-        >
-          <Image className="w-5 h-5 mr-2" />
-          {isTextDocument ? 'Cover Image' : hasCarousel ? 'Download All Slides' : hasVideoScenes ? 'Download Video Scenes' : 'Download'}
-        </Button>
+            }}
+            size="lg"
+            variant="outline"
+            className="flex-1 text-base font-semibold"
+          >
+            <Headphones className="w-5 h-5 mr-2" />
+            Audio
+          </Button>
+        )}
+        {(output.previewUrl || (output.downloadUrl && output.downloadUrl !== '#')) && (
+          <Button
+            onClick={() => {
+              analyticsService.trackDownloadClicked(output.contentType);
+              downloadPrimaryVisual(output);
+              toast({
+                title: 'Primary Asset Opened',
+                description: 'Your primary visual asset is opening in a new tab.'
+              });
+            }}
+            size="lg"
+            variant={isTextDocument || isHtmlDocument ? 'outline' : 'default'}
+            className="flex-1 text-base font-semibold"
+          >
+            <Image className="w-5 h-5 mr-2" />
+            {isTextDocument || isHtmlDocument ? 'Cover / Key Visual' : hasCarousel ? 'Lead Slide' : hasVideoScenes ? 'Key Frame' : 'Primary Asset'}
+          </Button>
+        )}
         <Button 
           onClick={() => {
             analyticsService.trackShareClicked(output.contentType);

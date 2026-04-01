@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Header } from '@/components/Header';
-import { DetailedPromptForm, type DetailedPromptData } from '@/components/DetailedPromptForm';
-import { GuidedThemeForm } from '@/components/GuidedThemeForm';
+import { GuidedThemeForm, type DetailedPromptData } from '@/components/GuidedThemeForm';
 import { OutputPreview } from '@/components/OutputPreview';
 import { HistoryPanel } from '@/components/HistoryPanel';
 import { Landing } from '@/pages/Landing';
@@ -256,6 +255,8 @@ function App() {
       const detailedData: DetailedPromptData = {
         prompt: 'Create an infographic on daily hydration — blue and white palette.',
         contentType: 'infographic',
+        market: 'global',
+        apiNamespace: 'medical',
         tone: 'professional',
         length: 'medium',
         scientificDepth: 'intermediate',
@@ -328,8 +329,8 @@ function App() {
                 </span>
               </h2>
               <p className="text-lg text-muted-foreground animate-fade-in">
-                Generate infographics, videos, presentations, social posts, documents, and reports
-                instantly with AI. Professional quality.
+                Start with a one-line brief, choose from stronger prompt options, pick your format,
+                refine with feedback, and export the result.
               </p>
             </div>
 

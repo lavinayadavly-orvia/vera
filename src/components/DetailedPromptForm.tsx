@@ -6,12 +6,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Sparkles, Loader2, ChevronRight, ChevronLeft } from 'lucide-react';
-import type { ContentType } from '@/types';
+import { Sparkles, Loader2, ChevronRight, ChevronLeft, ShieldCheck, Megaphone } from 'lucide-react';
+import type { ApiNamespace, ContentType, Market } from '@/types';
 
 export interface DetailedPromptData {
   prompt: string;
   contentType: ContentType;
+  market: Market;
+  apiNamespace: ApiNamespace;
   tone: 'professional' | 'casual' | 'academic' | 'persuasive' | 'inspirational';
   length: 'short' | 'medium' | 'long' | 'comprehensive';
   scientificDepth: 'basic' | 'intermediate' | 'advanced' | 'expert';
@@ -34,10 +36,23 @@ const contentTypeKeywords: Record<ContentType, string[]> = {
   'white-paper': ['white paper', 'whitepaper', 'research paper', 'technical paper', 'scientific paper']
 };
 
+function inferNamespace(contentType: ContentType, prompt: string, audience: string): ApiNamespace {
+  if (contentType === 'social-post' || /\bbrand|campaign|launch|promo|promotional\b/i.test(prompt)) {
+    return 'marketing';
+  }
+
+  if (/\bhcp|clinician|medical affairs|msl|scientific exchange\b/i.test(audience)) {
+    return 'medical';
+  }
+
+  return 'medical';
+}
+
 export function DetailedPromptForm({ onGenerate, isGenerating }: DetailedPromptFormProps) {
   const [step, setStep] = useState(1);
   const [prompt, setPrompt] = useState('');
   const [detectedType, setDetectedType] = useState<ContentType | null>(null);
+  const [apiNamespace, setApiNamespace] = useState<ApiNamespace>('medical');
   const [tone, setTone] = useState<DetailedPromptData['tone']>('professional');
   const [length, setLength] = useState<DetailedPromptData['length']>('medium');
   const [scientificDepth, setScientificDepth] = useState<DetailedPromptData['scientificDepth']>('intermediate');
@@ -60,6 +75,7 @@ export function DetailedPromptForm({ onGenerate, isGenerating }: DetailedPromptF
     if (value.trim()) {
       const type = detectContentType(value);
       setDetectedType(type);
+      setApiNamespace(inferNamespace(type, value, targetAudience));
     } else {
       setDetectedType(null);
     }
@@ -71,6 +87,8 @@ export function DetailedPromptForm({ onGenerate, isGenerating }: DetailedPromptF
     const data: DetailedPromptData = {
       prompt,
       contentType: detectedType || 'infographic',
+      market: 'global',
+      apiNamespace,
       tone,
       length,
       scientificDepth,
@@ -277,6 +295,38 @@ export function DetailedPromptForm({ onGenerate, isGenerating }: DetailedPromptF
               </Select>
             </div>
 
+            <div className="space-y-3">
+              <Label className="text-base font-semibold">API Namespace</Label>
+              <RadioGroup value={apiNamespace} onValueChange={(value) => setApiNamespace(value as ApiNamespace)}>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <Label htmlFor="namespace-medical" className="cursor-pointer">
+                    <div className={`flex items-center space-x-2 p-4 rounded-lg border-2 transition-colors ${
+                      apiNamespace === 'medical' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'
+                    }`}>
+                      <RadioGroupItem value="medical" id="namespace-medical" />
+                      <ShieldCheck className="w-4 h-4 text-primary" />
+                      <div>
+                        <div className="font-semibold">Medical</div>
+                        <div className="text-xs text-muted-foreground">Evidence-governed scientific namespace</div>
+                      </div>
+                    </div>
+                  </Label>
+                  <Label htmlFor="namespace-marketing" className="cursor-pointer">
+                    <div className={`flex items-center space-x-2 p-4 rounded-lg border-2 transition-colors ${
+                      apiNamespace === 'marketing' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'
+                    }`}>
+                      <RadioGroupItem value="marketing" id="namespace-marketing" />
+                      <Megaphone className="w-4 h-4 text-primary" />
+                      <div>
+                        <div className="font-semibold">Marketing</div>
+                        <div className="text-xs text-muted-foreground">Promotional namespace with term controls</div>
+                      </div>
+                    </div>
+                  </Label>
+                </div>
+              </RadioGroup>
+            </div>
+
             {/* Target Audience */}
             <div className="space-y-2">
               <Label htmlFor="audience" className="text-base font-semibold">
@@ -285,7 +335,11 @@ export function DetailedPromptForm({ onGenerate, isGenerating }: DetailedPromptF
               <Textarea
                 id="audience"
                 value={targetAudience}
-                onChange={(e) => setTargetAudience(e.target.value)}
+                onChange={(e) => {
+                  const nextAudience = e.target.value;
+                  setTargetAudience(nextAudience);
+                  setApiNamespace(inferNamespace(detectedType || 'infographic', prompt, nextAudience));
+                }}
                 placeholder="e.g., 'Healthcare professionals', 'Key Opinion Leaders', 'Medical Affairs', 'Payers'"
                 className="min-h-[80px] resize-none"
               />
@@ -348,6 +402,10 @@ export function DetailedPromptForm({ onGenerate, isGenerating }: DetailedPromptF
                 <div>
                   <Label className="text-sm text-muted-foreground">Technical Depth</Label>
                   <p className="text-base capitalize font-medium mt-1">{scientificDepth}</p>
+                </div>
+                <div>
+                  <Label className="text-sm text-muted-foreground">API Namespace</Label>
+                  <p className="text-base capitalize font-medium mt-1">{apiNamespace}</p>
                 </div>
                 <div>
                   <Label className="text-sm text-muted-foreground">Target Audience</Label>

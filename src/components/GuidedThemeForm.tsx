@@ -1,17 +1,21 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Sparkles, Loader2, ChevronRight, ChevronLeft, Mic, FileText, Video, Image as ImageIcon } from 'lucide-react';
-import type { ContentType } from '@/types';
+import { Sparkles, Loader2, ChevronRight, ChevronLeft, Mic, FileText, Video, Image as ImageIcon, LayoutTemplate, ScrollText, BarChart3, Newspaper, ShieldCheck, Megaphone } from 'lucide-react';
+import type { ApiNamespace, ContentType, Market, PromptBlueprint } from '@/types';
 import { generatePromptsFromTheme } from '@/services/generator';
 import { useToast } from '@/hooks/use-toast';
 
 export interface DetailedPromptData {
   prompt: string;
   contentType: ContentType;
+  market: Market;
+  apiNamespace: ApiNamespace;
   tone: 'professional' | 'casual' | 'academic' | 'persuasive' | 'inspirational';
   length: 'short' | 'medium' | 'long' | 'comprehensive';
   scientificDepth: 'basic' | 'intermediate' | 'advanced' | 'expert';
@@ -23,33 +27,150 @@ interface GuidedThemeFormProps {
   isGenerating: boolean;
 }
 
+const FORMAT_OPTIONS: Array<{
+  value: ContentType;
+  label: string;
+  desc: string;
+  icon: typeof ImageIcon;
+}> = [
+  { value: 'infographic', label: 'Infographic', desc: 'Visual explainers and posters', icon: ImageIcon },
+  { value: 'white-paper', label: 'White Paper', desc: 'Long-form authoritative documents', icon: FileText },
+  { value: 'presentation', label: 'Presentation', desc: 'Slide deck structure and narrative', icon: LayoutTemplate },
+  { value: 'video', label: 'Video', desc: 'Storyboard, scenes, and scripts', icon: Video },
+  { value: 'podcast', label: 'Podcast', desc: 'Audio-first scripts and cover', icon: Mic },
+  { value: 'document', label: 'Document', desc: 'Professional written document', icon: ScrollText },
+  { value: 'report', label: 'Report', desc: 'Evidence-led analysis and findings', icon: BarChart3 },
+  { value: 'social-post', label: 'Social Post', desc: 'Single-post or carousel-ready copy', icon: Newspaper }
+];
+
+const TONE_OPTIONS: DetailedPromptData['tone'][] = [
+  'professional',
+  'academic',
+  'persuasive',
+  'casual',
+  'inspirational'
+];
+
+const MARKET_OPTIONS: Array<{ value: Market; label: string; desc: string }> = [
+  { value: 'global', label: 'Global', desc: 'Default global medical-review standards' },
+  { value: 'india', label: 'India', desc: 'UCPMP-sensitive language and lower literacy target' },
+  { value: 'singapore', label: 'Singapore', desc: 'Reference currency re-validation focus' },
+  { value: 'dubai', label: 'Dubai / UAE', desc: 'Arabic localisation and transliteration caution' },
+  { value: 'germany', label: 'Germany', desc: 'Promotional content cross-checks against SmPC alignment' },
+  { value: 'us', label: 'United States', desc: 'Fair-balance and boxed-warning review expectations' },
+  { value: 'uk', label: 'United Kingdom', desc: 'ABPI promotional substantiation and SPC consistency checks' },
+];
+
+const NAMESPACE_OPTIONS: Array<{
+  value: ApiNamespace;
+  label: string;
+  desc: string;
+  icon: typeof ShieldCheck;
+}> = [
+  {
+    value: 'medical',
+    label: 'Medical',
+    desc: 'Medical Affairs / scientific exchange namespace with evidence-governed outputs',
+    icon: ShieldCheck
+  },
+  {
+    value: 'marketing',
+    label: 'Marketing',
+    desc: 'Commercial / promotional namespace with market-specific term controls',
+    icon: Megaphone
+  }
+];
+
+const AUDIENCE_PRESETS = {
+  general: 'General public',
+  hcp: 'Healthcare Professionals (HCPs)',
+  leadership: 'Business leaders and decision-makers'
+} as const;
+
+function inferAudiencePreset(audience: string): 'general' | 'hcp' | 'leadership' | 'custom' {
+  const normalized = audience.toLowerCase();
+  if (normalized.includes('hcp') || normalized.includes('healthcare') || normalized.includes('clinician')) {
+    return 'hcp';
+  }
+  if (normalized.includes('leader') || normalized.includes('executive') || normalized.includes('decision-maker')) {
+    return 'leadership';
+  }
+  if (normalized.includes('general') || normalized.includes('public')) {
+    return 'general';
+  }
+  return 'custom';
+}
+
+function inferNamespace(contentType: ContentType, prompt: string, audience: string): ApiNamespace {
+  if (contentType === 'social-post' || /\bbrand|campaign|launch|promo|promotional\b/i.test(prompt)) {
+    return 'marketing';
+  }
+
+  if (/\bhcp|clinician|medical affairs|msl|scientific exchange\b/i.test(audience)) {
+    return 'medical';
+  }
+
+  return 'medical';
+}
+
 export function GuidedThemeForm({ onGenerate, isGenerating }: GuidedThemeFormProps) {
   const { toast } = useToast();
   const [step, setStep] = useState(1);
-  const [theme, setTheme] = useState('');
-  
+  const [brief, setBrief] = useState('');
   const [isGeneratingPrompts, setIsGeneratingPrompts] = useState(false);
-  const [suggestedPrompts, setSuggestedPrompts] = useState<string[]>([]);
-  
-  const [selectedPrompt, setSelectedPrompt] = useState('');
+  const [promptOptions, setPromptOptions] = useState<PromptBlueprint[]>([]);
+  const [selectedOptionId, setSelectedOptionId] = useState('');
+  const [editedPrompt, setEditedPrompt] = useState('');
   const [contentType, setContentType] = useState<ContentType>('infographic');
-  const [extent, setExtent] = useState<'academic' | 'scientific' | 'general'>('scientific');
-  const [audience, setAudience] = useState<'hcp' | 'general' | 'custom'>('general');
+  const [market, setMarket] = useState<Market>('global');
+  const [apiNamespace, setApiNamespace] = useState<ApiNamespace>('medical');
+  const [tone, setTone] = useState<DetailedPromptData['tone']>('professional');
+  const [length, setLength] = useState<DetailedPromptData['length']>('medium');
+  const [scientificDepth, setScientificDepth] = useState<DetailedPromptData['scientificDepth']>('intermediate');
+  const [audiencePreset, setAudiencePreset] = useState<'general' | 'hcp' | 'leadership' | 'custom'>('general');
   const [customAudience, setCustomAudience] = useState('');
 
+  const selectedOption = useMemo(
+    () => promptOptions.find((option) => option.id === selectedOptionId) || null,
+    [promptOptions, selectedOptionId]
+  );
+
+  useEffect(() => {
+    if (!selectedOption) return;
+
+    setEditedPrompt(selectedOption.prompt);
+    setContentType(selectedOption.recommendedContentType);
+    setTone(selectedOption.recommendedTone);
+    setLength(selectedOption.recommendedLength);
+    setScientificDepth(selectedOption.recommendedScientificDepth);
+
+    const nextAudiencePreset = inferAudiencePreset(selectedOption.recommendedAudience);
+    setAudiencePreset(nextAudiencePreset);
+    setCustomAudience(nextAudiencePreset === 'custom' ? selectedOption.recommendedAudience : '');
+    setApiNamespace(
+      inferNamespace(
+        selectedOption.recommendedContentType,
+        selectedOption.prompt,
+        selectedOption.recommendedAudience,
+      ),
+    );
+  }, [selectedOption]);
+
   const handleGeneratePrompts = async () => {
-    if (!theme.trim()) return;
+    if (!brief.trim()) return;
+
     try {
       setIsGeneratingPrompts(true);
-      const prompts = await generatePromptsFromTheme(theme);
-      setSuggestedPrompts(prompts);
+      const options = await generatePromptsFromTheme(brief.trim());
+      setPromptOptions(options);
+      setSelectedOptionId(options[0]?.id || '');
       setStep(2);
     } catch (error: any) {
-      console.error("Failed to generate prompts:", error);
+      console.error('Failed to generate prompt options:', error);
       toast({
-        title: "Couldn't generate angles",
+        title: "Couldn't generate prompt options",
         description: `Error details: ${error?.message || error?.toString() || JSON.stringify(error)}`,
-        variant: "destructive"
+        variant: 'destructive'
       });
     } finally {
       setIsGeneratingPrompts(false);
@@ -57,47 +178,32 @@ export function GuidedThemeForm({ onGenerate, isGenerating }: GuidedThemeFormPro
   };
 
   const handleGenerateContent = async () => {
-    if (!selectedPrompt || isGenerating) return;
+    if (!editedPrompt.trim() || isGenerating) return;
 
-    // Map the selected "extent" to our internal tone/depth structures
-    let tone: DetailedPromptData['tone'] = 'professional';
-    let depth: DetailedPromptData['scientificDepth'] = 'intermediate';
-
-    if (extent === 'academic') {
-      tone = 'academic';
-      depth = 'expert';
-    } else if (extent === 'scientific') {
-      tone = 'professional';
-      depth = 'advanced';
-    } else if (extent === 'general') {
-      tone = 'casual';
-      depth = 'basic';
-    }
-
-    const targetAudience = audience === 'custom' ? customAudience : (audience === 'hcp' ? 'Healthcare Professionals (HCPs)' : 'General Public');
+    const targetAudience = audiencePreset === 'custom'
+      ? customAudience.trim()
+      : AUDIENCE_PRESETS[audiencePreset];
 
     const data: DetailedPromptData = {
-      prompt: selectedPrompt,
+      prompt: editedPrompt.trim(),
       contentType,
+      market,
+      apiNamespace,
       tone,
-      length: 'long', // Podcasts and whitepapers default to long
-      scientificDepth: depth,
-      targetAudience
+      length,
+      scientificDepth,
+      targetAudience: targetAudience || 'General public'
     };
 
     await onGenerate(data);
   };
 
-  const formats = [
-    { value: 'infographic', label: 'Infographic', icon: ImageIcon, desc: 'Visual summaries' },
-    { value: 'video', label: 'Video', icon: Video, desc: 'Motion graphics' },
-    { value: 'podcast', label: 'Podcast', icon: Mic, desc: 'Audio scripts' },
-    { value: 'white-paper', label: 'White Paper', icon: FileText, desc: 'Comprehensive reports' },
-  ];
+  const canAdvanceFromBrief = brief.trim().length >= 5;
+  const canAdvanceFromOptions = !!selectedOption && editedPrompt.trim().length >= 20;
+  const selectedFormatMeta = FORMAT_OPTIONS.find((option) => option.value === contentType);
 
   return (
-    <div className="w-full max-w-4xl mx-auto space-y-6 animate-fade-in">
-      {/* Progress */}
+    <div className="w-full max-w-5xl mx-auto space-y-6 animate-fade-in">
       <div className="flex items-center justify-center gap-2 mb-8">
         {[1, 2, 3].map((num) => (
           <div key={num} className="flex items-center gap-2">
@@ -111,209 +217,322 @@ export function GuidedThemeForm({ onGenerate, isGenerating }: GuidedThemeFormPro
         ))}
       </div>
 
-      {/* Step 1: Input Theme */}
       {step === 1 && (
         <Card className="border-2 animate-fade-in shadow-md">
           <CardHeader>
-            <CardTitle>What is your underlying theme?</CardTitle>
+            <CardTitle>Start with One Line</CardTitle>
             <CardDescription>
-              Enter a broad topic or theme (e.g., "Obesity in female under 35y in Korea"). Our AI will craft highly-targeted angles for you to choose from.
+              Give DoneandDone a rough one-line brief. We’ll turn it into four stronger prompt directions for you to choose from.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <Textarea
-              value={theme}
-              onChange={(e) => setTheme(e.target.value)}
-              placeholder="e.g., 'Obesity in female under 35y in Korea'"
-              className="min-h-[100px] text-lg resize-none bg-card focus:border-primary transition-all p-4"
+              value={brief}
+              onChange={(e) => setBrief(e.target.value)}
+              placeholder="e.g., diabetes prevention for the general public, or AI trends for hospital leadership"
+              className="min-h-[110px] text-lg resize-none bg-card focus:border-primary transition-all p-4"
               disabled={isGeneratingPrompts}
             />
+            <div className="grid gap-2 text-sm text-muted-foreground">
+              <div className="rounded-lg border border-dashed px-3 py-2">Try: "Obesity in women under 35 in Korea"</div>
+              <div className="rounded-lg border border-dashed px-3 py-2">Try: "Future of digital therapeutics in diabetes care"</div>
+              <div className="rounded-lg border border-dashed px-3 py-2">Try: "White paper on hospital AI adoption barriers"</div>
+            </div>
             <Button
               onClick={handleGeneratePrompts}
-              disabled={theme.trim().length < 5 || isGeneratingPrompts}
+              disabled={!canAdvanceFromBrief || isGeneratingPrompts}
               size="lg"
               className="w-full mt-4"
             >
               {isGeneratingPrompts ? (
-                <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Gathering Insights...</>
+                <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Building Prompt Options...</>
               ) : (
-                <>Generate Angles <ChevronRight className="w-4 h-4 ml-2" /></>
+                <>Generate 4 Prompt Options <ChevronRight className="w-4 h-4 ml-2" /></>
               )}
             </Button>
           </CardContent>
         </Card>
       )}
 
-      {/* Step 2: Choose your Prompt */}
       {step === 2 && (
         <Card className="border-2 animate-fade-in">
           <CardHeader>
-            <CardTitle>Choose your Angle</CardTitle>
+            <CardTitle>Choose Your Direction</CardTitle>
             <CardDescription>
-              Based on "{theme}", select the approach that best fits your goals.
+              Pick the detailed prompt that best matches your goal. You can still edit it before generation.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <RadioGroup value={selectedPrompt} onValueChange={setSelectedPrompt} className="grid grid-cols-1 gap-4">
-              {suggestedPrompts.map((p, idx) => (
+          <CardContent className="space-y-6">
+            <RadioGroup value={selectedOptionId} onValueChange={setSelectedOptionId} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {promptOptions.map((option) => (
                 <Label
-                  key={idx}
-                  htmlFor={`prompt-${idx}`}
-                  className={`cursor-pointer border-2 rounded-xl p-5 hover:border-primary/50 transition-all ${
-                    selectedPrompt === p ? 'border-primary bg-primary/5 ring-2 ring-primary/20' : 'border-border'
+                  key={option.id}
+                  htmlFor={`prompt-option-${option.id}`}
+                  className={`cursor-pointer border-2 rounded-2xl p-5 transition-all ${
+                    selectedOptionId === option.id ? 'border-primary bg-primary/5 ring-2 ring-primary/20' : 'border-border hover:border-primary/50'
                   }`}
                 >
                   <div className="flex items-start gap-3">
-                    <RadioGroupItem value={p} id={`prompt-${idx}`} className="mt-1" />
-                    <span className="text-base font-medium leading-relaxed">{p}</span>
+                    <RadioGroupItem value={option.id} id={`prompt-option-${option.id}`} className="mt-1" />
+                    <div className="space-y-3 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-base font-semibold">{option.label}</span>
+                        <Badge variant="secondary" className="capitalize">
+                          {option.recommendedContentType.replace('-', ' ')}
+                        </Badge>
+                      </div>
+                      <p className="text-sm font-medium text-foreground/90">{option.angle}</p>
+                      <p className="text-sm text-muted-foreground leading-relaxed">{option.rationale}</p>
+                      <div className="rounded-xl bg-background/70 border p-3 text-sm leading-relaxed text-muted-foreground">
+                        {option.prompt}
+                      </div>
+                    </div>
                   </div>
                 </Label>
               ))}
             </RadioGroup>
-            
-            <div className="flex gap-3 pt-6">
+
+            {selectedOption && (
+              <div className="space-y-3 rounded-2xl border bg-accent/20 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <Label htmlFor="edited-prompt" className="text-base font-semibold">Final Prompt</Label>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Edit the selected option before generation if you want to tighten scope, add constraints, or change the ask.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Badge variant="outline">{selectedOption.recommendedTone}</Badge>
+                    <Badge variant="outline">{selectedOption.recommendedScientificDepth}</Badge>
+                    <Badge variant="outline">{selectedOption.recommendedLength}</Badge>
+                  </div>
+                </div>
+                <Textarea
+                  id="edited-prompt"
+                  value={editedPrompt}
+                  onChange={(e) => setEditedPrompt(e.target.value)}
+                  className="min-h-[160px] resize-none text-base"
+                />
+              </div>
+            )}
+
+            <div className="flex gap-3 pt-2">
               <Button onClick={() => setStep(1)} variant="outline" size="lg" className="flex-1">
                 <ChevronLeft className="w-4 h-4 mr-2" /> Back
               </Button>
-              <Button onClick={() => setStep(3)} disabled={!selectedPrompt} size="lg" className="flex-1">
-                Next <ChevronRight className="w-4 h-4 ml-2" />
+              <Button onClick={() => setStep(3)} disabled={!canAdvanceFromOptions} size="lg" className="flex-1">
+                Choose Format & Settings <ChevronRight className="w-4 h-4 ml-2" />
               </Button>
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* Step 3: Refine formats */}
       {step === 3 && (
         <Card className="border-2 animate-fade-in">
           <CardHeader>
-            <CardTitle>Refine the Details</CardTitle>
-            <CardDescription>Who is this for and what format do they prefer?</CardDescription>
+            <CardTitle>Choose Format and Delivery</CardTitle>
+            <CardDescription>
+              Finalize the output format, tone, depth, and audience before generation. Feedback and regeneration stay available after output.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-8">
-            
-            {/* Format */}
+            <div className="space-y-3">
+              <Label htmlFor="final-prompt" className="text-lg font-semibold">Prompt Going to Generation</Label>
+              <Textarea
+                id="final-prompt"
+                value={editedPrompt}
+                onChange={(e) => setEditedPrompt(e.target.value)}
+                className="min-h-[150px] resize-none text-base"
+                disabled={isGenerating}
+              />
+            </div>
+
             <div className="space-y-3">
               <Label className="text-lg font-semibold">Format</Label>
-              <RadioGroup value={contentType} onValueChange={(val) => setContentType(val as ContentType)}>
+              <RadioGroup value={contentType} onValueChange={(value) => setContentType(value as ContentType)}>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  {formats.map(f => {
-                    const Icon = f.icon;
+                  {FORMAT_OPTIONS.map((format) => {
+                    const Icon = format.icon;
+                    const isRecommended = selectedOption?.recommendedContentType === format.value;
                     return (
-                      <Label key={f.value} htmlFor={`fmt-${f.value}`} className="cursor-pointer">
-                        <div className={`p-4 border-2 rounded-xl flex flex-col items-center gap-3 text-center transition-all ${
-                          contentType === f.value ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'
+                      <Label key={format.value} htmlFor={`fmt-${format.value}`} className="cursor-pointer">
+                        <div className={`h-full p-4 border-2 rounded-xl flex flex-col items-start gap-3 transition-all ${
+                          contentType === format.value ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'
                         }`}>
-                          <RadioGroupItem value={f.value} id={`fmt-${f.value}`} className="sr-only" />
-                          <Icon className={`w-8 h-8 ${contentType === f.value ? 'text-primary' : 'text-muted-foreground'}`} />
+                          <div className="flex items-center justify-between w-full gap-2">
+                            <RadioGroupItem value={format.value} id={`fmt-${format.value}`} className="sr-only" />
+                            <Icon className={`w-7 h-7 ${contentType === format.value ? 'text-primary' : 'text-muted-foreground'}`} />
+                            {isRecommended && <Badge variant="secondary">Recommended</Badge>}
+                          </div>
                           <div>
-                            <p className="font-semibold">{f.label}</p>
-                            <p className="text-xs text-muted-foreground mt-1">{f.desc}</p>
+                            <p className="font-semibold">{format.label}</p>
+                            <p className="text-xs text-muted-foreground mt-1">{format.desc}</p>
                           </div>
                         </div>
                       </Label>
-                    )
+                    );
                   })}
                 </div>
               </RadioGroup>
-            </div>
-
-            {/* Extent */}
-            <div className="space-y-3">
-              <Label className="text-lg font-semibold">Extent & Depth</Label>
-              <RadioGroup value={extent} onValueChange={(val) => setExtent(val as any)}>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <Label htmlFor="ext-academic" className="cursor-pointer border-2 rounded-xl p-4 transition-all hover:bg-accent focus-within:ring-2 ring-primary">
-                    <div className="flex items-center gap-3">
-                      <RadioGroupItem id="ext-academic" value="academic" />
-                      <div>
-                        <p className="font-semibold">Academic</p>
-                        <p className="text-sm text-muted-foreground">Heavy research & expert depth</p>
-                      </div>
-                    </div>
-                  </Label>
-                  <Label htmlFor="ext-scientific" className="cursor-pointer border-2 rounded-xl p-4 transition-all hover:bg-accent focus-within:ring-2 ring-primary">
-                    <div className="flex items-center gap-3">
-                      <RadioGroupItem id="ext-scientific" value="scientific" />
-                      <div>
-                        <p className="font-semibold">Scientific</p>
-                        <p className="text-sm text-muted-foreground">Data-driven but accessible</p>
-                      </div>
-                    </div>
-                  </Label>
-                  <Label htmlFor="ext-general" className="cursor-pointer border-2 rounded-xl p-4 transition-all hover:bg-accent focus-within:ring-2 ring-primary">
-                    <div className="flex items-center gap-3">
-                      <RadioGroupItem id="ext-general" value="general" />
-                      <div>
-                        <p className="font-semibold">General Awareness</p>
-                        <p className="text-sm text-muted-foreground">Easy to understand for the public</p>
-                      </div>
-                    </div>
-                  </Label>
-                </div>
-              </RadioGroup>
-            </div>
-
-            {/* Audience */}
-            <div className="space-y-3">
-              <Label className="text-lg font-semibold">Target Audience</Label>
-              <RadioGroup value={audience} onValueChange={(val) => setAudience(val as any)}>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <Label htmlFor="aud-hcp" className="cursor-pointer border-2 rounded-xl p-4 transition-all hover:bg-accent">
-                    <div className="flex items-center gap-3">
-                      <RadioGroupItem id="aud-hcp" value="hcp" />
-                      <span className="font-semibold">Healthcare Professionals (HCPs)</span>
-                    </div>
-                  </Label>
-                  <Label htmlFor="aud-gen" className="cursor-pointer border-2 rounded-xl p-4 transition-all hover:bg-accent">
-                    <div className="flex items-center gap-3">
-                      <RadioGroupItem id="aud-gen" value="general" />
-                      <span className="font-semibold">General Population</span>
-                    </div>
-                  </Label>
-                  <Label htmlFor="aud-custom" className="cursor-pointer border-2 rounded-xl p-4 transition-all hover:bg-accent">
-                    <div className="flex items-center gap-3">
-                      <RadioGroupItem id="aud-custom" value="custom" />
-                      <span className="font-semibold">Custom...</span>
-                    </div>
-                  </Label>
-                </div>
-              </RadioGroup>
-              
-              {audience === 'custom' && (
-                <div className="mt-4 animate-fade-in pl-2">
-                  <Textarea
-                    value={customAudience}
-                    onChange={(e) => setCustomAudience(e.target.value)}
-                    placeholder="Describe your specific target audience..."
-                    className="mt-2 text-base resize-none"
-                    rows={2}
-                  />
-                </div>
+              {selectedFormatMeta && (
+                <p className="text-sm text-muted-foreground">
+                  Selected delivery: <span className="font-medium text-foreground">{selectedFormatMeta.label}</span> · {selectedFormatMeta.desc}
+                </p>
               )}
             </div>
 
-            <div className="flex gap-3 pt-6 border-t">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="space-y-3">
+                <Label className="text-base font-semibold">Tone</Label>
+                <RadioGroup value={tone} onValueChange={(value) => setTone(value as DetailedPromptData['tone'])} className="space-y-2">
+                  {TONE_OPTIONS.map((toneOption) => (
+                    <Label key={toneOption} htmlFor={`tone-${toneOption}`} className="cursor-pointer">
+                      <div className={`flex items-center gap-3 p-3 rounded-xl border transition-colors ${
+                        tone === toneOption ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40'
+                      }`}>
+                        <RadioGroupItem value={toneOption} id={`tone-${toneOption}`} />
+                        <span className="capitalize font-medium">{toneOption}</span>
+                      </div>
+                    </Label>
+                  ))}
+                </RadioGroup>
+              </div>
+
+              <div className="space-y-3">
+                <Label className="text-base font-semibold">Market / Region</Label>
+                <Select value={market} onValueChange={(value) => setMarket(value as Market)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {MARKET_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {MARKET_OPTIONS.find((option) => option.value === market)?.desc}
+                </p>
+
+                <Label className="text-base font-semibold pt-2 block">API Namespace</Label>
+                <RadioGroup value={apiNamespace} onValueChange={(value) => setApiNamespace(value as ApiNamespace)} className="space-y-2">
+                  {NAMESPACE_OPTIONS.map((option) => {
+                    const Icon = option.icon;
+                    return (
+                      <Label key={option.value} htmlFor={`namespace-${option.value}`} className="cursor-pointer">
+                        <div className={`flex items-start gap-3 p-3 rounded-xl border transition-colors ${
+                          apiNamespace === option.value ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40'
+                        }`}>
+                          <RadioGroupItem value={option.value} id={`namespace-${option.value}`} />
+                          <Icon className={`w-4 h-4 mt-0.5 ${apiNamespace === option.value ? 'text-primary' : 'text-muted-foreground'}`} />
+                          <div>
+                            <p className="font-medium">{option.label}</p>
+                            <p className="text-xs text-muted-foreground mt-1">{option.desc}</p>
+                          </div>
+                        </div>
+                      </Label>
+                    );
+                  })}
+                </RadioGroup>
+
+                <Label className="text-base font-semibold">Length</Label>
+                <Select value={length} onValueChange={(value) => setLength(value as DetailedPromptData['length'])}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="short">Short</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="long">Long</SelectItem>
+                    <SelectItem value="comprehensive">Comprehensive</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <Label className="text-base font-semibold pt-2 block">Scientific Depth</Label>
+                <Select value={scientificDepth} onValueChange={(value) => setScientificDepth(value as DetailedPromptData['scientificDepth'])}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="basic">Basic</SelectItem>
+                    <SelectItem value="intermediate">Intermediate</SelectItem>
+                    <SelectItem value="advanced">Advanced</SelectItem>
+                    <SelectItem value="expert">Expert</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-3">
+                <Label className="text-base font-semibold">Audience</Label>
+                <RadioGroup value={audiencePreset} onValueChange={(value) => setAudiencePreset(value as 'general' | 'hcp' | 'leadership' | 'custom')} className="space-y-2">
+                  <Label htmlFor="aud-general" className="cursor-pointer">
+                    <div className={`flex items-center gap-3 p-3 rounded-xl border transition-colors ${
+                      audiencePreset === 'general' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40'
+                    }`}>
+                      <RadioGroupItem id="aud-general" value="general" />
+                      <span className="font-medium">General public</span>
+                    </div>
+                  </Label>
+                  <Label htmlFor="aud-hcp" className="cursor-pointer">
+                    <div className={`flex items-center gap-3 p-3 rounded-xl border transition-colors ${
+                      audiencePreset === 'hcp' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40'
+                    }`}>
+                      <RadioGroupItem id="aud-hcp" value="hcp" />
+                      <span className="font-medium">HCPs / clinicians</span>
+                    </div>
+                  </Label>
+                  <Label htmlFor="aud-leadership" className="cursor-pointer">
+                    <div className={`flex items-center gap-3 p-3 rounded-xl border transition-colors ${
+                      audiencePreset === 'leadership' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40'
+                    }`}>
+                      <RadioGroupItem id="aud-leadership" value="leadership" />
+                      <span className="font-medium">Leadership / decision-makers</span>
+                    </div>
+                  </Label>
+                  <Label htmlFor="aud-custom" className="cursor-pointer">
+                    <div className={`flex items-center gap-3 p-3 rounded-xl border transition-colors ${
+                      audiencePreset === 'custom' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40'
+                    }`}>
+                      <RadioGroupItem id="aud-custom" value="custom" />
+                      <span className="font-medium">Custom audience</span>
+                    </div>
+                  </Label>
+                </RadioGroup>
+
+                {audiencePreset === 'custom' && (
+                  <Textarea
+                    value={customAudience}
+                    onChange={(e) => setCustomAudience(e.target.value)}
+                    placeholder="Describe the exact audience..."
+                    className="min-h-[88px] resize-none"
+                  />
+                )}
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-4 border-t">
               <Button onClick={() => setStep(2)} variant="outline" size="lg" className="flex-1" disabled={isGenerating}>
                 <ChevronLeft className="w-4 h-4 mr-2" /> Back
               </Button>
-              <Button 
-                onClick={handleGenerateContent} 
-                className="flex-1 text-lg py-6" 
+              <Button
+                onClick={handleGenerateContent}
+                className="flex-1 text-lg py-6"
                 size="lg"
-                disabled={isGenerating || (audience === 'custom' && !customAudience.trim())}
+                disabled={isGenerating || !editedPrompt.trim() || (audiencePreset === 'custom' && !customAudience.trim())}
               >
                 {isGenerating ? (
                   <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Generating...</>
                 ) : (
-                  <><Sparkles className="w-5 h-5 mr-2" /> Generate Content</>
+                  <><Sparkles className="w-5 h-5 mr-2" /> Generate Output</>
                 )}
               </Button>
             </div>
           </CardContent>
         </Card>
       )}
-
     </div>
   );
 }
