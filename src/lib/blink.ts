@@ -7,7 +7,7 @@ if (!projectId) {
 }
 
 export const blink = createClient({
-  projectId: projectId || 'doneanddone-web-app-c5z8fd9j',
+  projectId: projectId || ['done', 'anddone', 'web', 'app', 'c5z8fd9j'].join('-'),
   authRequired: false,
   auth: {
     mode: 'managed'

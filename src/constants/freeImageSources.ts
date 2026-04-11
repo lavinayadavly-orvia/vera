@@ -1,7 +1,7 @@
 /**
  * Free Image Sources Documentation
  *
- * This file documents all approved free image and icon sources for DoneandDone.
+ * This file documents all approved free image and icon sources for Vera.
  * CRITICAL: Only these sources are allowed to prevent licensing issues.
  */
 

@@ -121,7 +121,7 @@ export function compileInfographicHtml(data: RealWorldInfographicData): string {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DoneandDone Infographic</title>
+<title>Vera Infographic</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -137,7 +137,7 @@ export function compileInfographicHtml(data: RealWorldInfographicData): string {
   --mint: #4dc39b;
   --gold: #d5a640;
   --sky: #4d8fe8;
-  --purple: #7764e8;
+  --purple: #1E8A5B;
   --red: #d45453;
 }
 html, body {
@@ -163,21 +163,17 @@ body {
 }
 .logo {
   display: inline-flex;
+  align-items: center;
+  gap: 10px;
   font-family: 'Syne', sans-serif;
   font-size: 13px;
   font-weight: 800;
+  color: var(--ink);
 }
-.logo-d1 {
-  background: var(--coral);
-  color: #fff;
-  padding: 6px 10px;
-  border-radius: 8px 0 0 8px;
-}
-.logo-d2 {
-  background: var(--ink);
-  color: #fff;
-  padding: 6px 10px;
-  border-radius: 0 8px 8px 0;
+.logo-mark {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
 }
 .tag-row {
   display: flex;
@@ -523,7 +519,7 @@ body {
 .pillar-card.accent-mint { background: #e9f8f2; border-color: #b8ead7; }
 .pillar-card.accent-gold { background: #fbf3df; border-color: #ecd49a; }
 .pillar-card.accent-sky { background: #e9f3ff; border-color: #bfd6fb; }
-.pillar-card.accent-purple { background: #f1efff; border-color: #cec7fb; }
+.pillar-card.accent-purple { background: #e8f6ef; border-color: #b7e2cb; }
 .pillar-card.accent-red { background: #fdeeee; border-color: #f4c2c2; }
 .pillar-card.accent-coral { background: #fff1ea; border-color: #f2c7b5; }
 .number-grid {
@@ -713,7 +709,7 @@ body {
 .fill-mint { background: linear-gradient(90deg, var(--mint), #6ad9b3); }
 .fill-gold { background: linear-gradient(90deg, var(--gold), #e5c062); }
 .fill-sky { background: linear-gradient(90deg, var(--sky), #77acf3); }
-.fill-purple { background: linear-gradient(90deg, var(--purple), #9688f1); }
+.fill-purple { background: linear-gradient(90deg, var(--purple), #44a97f); }
 .fill-red { background: linear-gradient(90deg, var(--red), #e57a78); }
 .text-coral { color: var(--coral); }
 .text-mint { color: var(--mint); }
@@ -807,7 +803,15 @@ body {
 <body>
   <div class="ig-wrap">
     <div class="brandbar">
-      <div class="logo"><span class="logo-d1">Done</span><span class="logo-d2">andDone</span></div>
+      <div class="logo">
+        <svg class="logo-mark" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Vera">
+          <rect width="64" height="64" rx="16" fill="#F0FAFA" stroke="#CBD5D4" stroke-width="0.5"/>
+          <line x1="19" y1="13" x2="32" y2="48" stroke="#0D9488" stroke-width="6.5" stroke-linecap="round"/>
+          <line x1="45" y1="13" x2="32" y2="48" stroke="#0D9488" stroke-width="6.5" stroke-linecap="round"/>
+          <circle cx="32" cy="49" r="4.5" fill="#0D9488"/>
+        </svg>
+        <span>Vera</span>
+      </div>
       <div class="tag-row">
         <span class="tag">${safe(data.tags.format)}</span>
         <span class="tag">${safe(data.tags.extent)}</span>
@@ -1007,7 +1011,7 @@ body {
         <div class="footer-meta">
           <span>Generated ${currentDate}</span>
           <span>Layout mode: ${safe(data.layout.mode)}</span>
-          <span>DoneandDone Medical Affairs Studio</span>
+          <span>Vera Medical Affairs Studio</span>
         </div>
       </div>
     </section>

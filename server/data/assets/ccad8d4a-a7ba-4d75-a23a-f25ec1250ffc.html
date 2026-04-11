@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Prioritizing Blood Pressure Health</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: linear-gradient(180deg, #f4f7fb 0%, #eef4ef 100%);
+    color: #173226;
+    padding: 24px;
+  }
+  .page {
+    max-width: 860px;
+    margin: 0 auto;
+    background: #ffffff;
+    border-radius: 32px;
+    overflow: hidden;
+    box-shadow: 0 24px 80px rgba(15, 23, 42, 0.12);
+    border: 1px solid rgba(23, 50, 38, 0.08);
+  }
+  .hero {
+    padding: 36px 36px 28px;
+    background: linear-gradient(135deg, #0f6a55 0%, #1f8b73 100%);
+    color: #ffffff;
+  }
+  .kicker {
+    display: inline-flex;
+    padding: 6px 12px;
+    background: rgba(255,255,255,0.14);
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+  }
+  h1 {
+    margin: 0;
+    font-size: 42px;
+    line-height: 1.02;
+    letter-spacing: -0.04em;
+  }
+  .subtitle {
+    margin-top: 14px;
+    max-width: 640px;
+    font-size: 15px;
+    line-height: 1.7;
+    color: rgba(255,255,255,0.92);
+  }
+  .meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 18px;
+  }
+  .meta span {
+    display: inline-flex;
+    padding: 5px 10px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.12);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .section {
+    padding: 28px 36px;
+    border-top: 1px solid rgba(23, 50, 38, 0.08);
+  }
+  .section h2 {
+    margin: 0 0 16px;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: #0f6a55;
+  }
+  .stats-grid,
+  .section-grid {
+    display: grid;
+    gap: 14px;
+  }
+  .stats-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .section-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .stat-card,
+  .section-card,
+  .highlight,
+  .reference-card {
+    border-radius: 20px;
+    padding: 18px;
+    background: #f6f8fa;
+    border: 1px solid rgba(23, 50, 38, 0.08);
+  }
+  .stat-card.c-mint, .section-card.c-mint { background: #e9f7f2; }
+  .stat-card.c-gold, .section-card.c-gold { background: #fff6df; }
+  .stat-card.c-sky, .section-card.c-sky { background: #eaf3ff; }
+  .stat-card.c-purple, .section-card.c-purple { background: #f1ecff; }
+  .stat-card.c-red, .section-card.c-red { background: #ffeded; }
+  .stat-value {
+    font-size: 34px;
+    font-weight: 800;
+    line-height: 1;
+    margin-bottom: 8px;
+  }
+  .stat-label {
+    font-size: 13px;
+    line-height: 1.5;
+    color: #4a6357;
+  }
+  .highlight p {
+    margin: 0;
+    font-size: 15px;
+    line-height: 1.7;
+    color: #284338;
+  }
+  .section-card h3 {
+    margin: 0 0 10px;
+    font-size: 18px;
+  }
+  .section-card ul,
+  .references ol {
+    margin: 0;
+    padding-left: 18px;
+  }
+  .section-card li,
+  .references li {
+    margin: 8px 0;
+    font-size: 14px;
+    line-height: 1.6;
+    color: #365045;
+  }
+  .actions {
+    display: grid;
+    gap: 12px;
+  }
+  .action-item {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    padding: 14px 16px;
+    border-radius: 16px;
+    background: #f8fafb;
+    border: 1px solid rgba(23, 50, 38, 0.08);
+    font-size: 14px;
+    line-height: 1.6;
+    color: #284338;
+  }
+  .action-index {
+    display: inline-flex;
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    align-items: center;
+    justify-content: center;
+    background: #0f6a55;
+    color: #fff;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  .references {
+    padding: 28px 36px 36px;
+    background: #fbfcfd;
+    border-top: 1px solid rgba(23, 50, 38, 0.08);
+  }
+  .references h2 {
+    margin: 0 0 14px;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: #0f6a55;
+  }
+  .footer {
+    margin-top: 12px;
+    font-size: 12px;
+    color: #688276;
+  }
+  @media (max-width: 860px) {
+    body { padding: 12px; }
+    .hero, .section, .references { padding-left: 20px; padding-right: 20px; }
+    .stats-grid, .section-grid { grid-template-columns: 1fr; }
+    h1 { font-size: 34px; }
+  }
+  @media print {
+    body { background: white; padding: 0; }
+    .page { box-shadow: none; border-radius: 0; max-width: none; }
+  }
+</style>
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <div class="kicker">Hypertension Screening in Adults Over 40</div>
+      <h1>Prioritizing Blood Pressure Health</h1>
+      <p class="subtitle">An advanced guide for health care professionals</p>
+      <div class="meta">
+        <span>HCPs / clinicians</span>
+        <span>Global</span>
+        <span>Evidence-led</span>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Key Metrics</h2>
+      <div class="stats-grid">
+    <article class="stat-card c-sky">
+      <div class="stat-value">40%</div>
+      <div class="stat-label">Adults over 40 with undiagnosed hypertension</div>
+    </article>
+  
+    <article class="stat-card c-red">
+      <div class="stat-value">2x</div>
+      <div class="stat-label">Increased risk of heart attack with unmanaged hypertension</div>
+    </article>
+  
+    <article class="stat-card c-purple">
+      <div class="stat-value">10 mmHg</div>
+      <div class="stat-label">Blood pressure reduction decreases stroke risk</div>
+    </article>
+  
+    <article class="stat-card c-gold">
+      <div class="stat-value">1.13 Billion</div>
+      <div class="stat-label">Global adults affected by hypertension</div>
+    </article>
+  </div>
+    </section>
+
+    <section class="section">
+      <h2>Why It Matters</h2>
+      <div class="highlight"><p>Hypertension is a leading risk factor for cardiovascular diseases. Early detection in adults over 40 can significantly reduce global health burdens.</p></div>
+    </section>
+
+    <section class="section">
+      <h2>Evidence Snapshot</h2>
+      <div class="section-grid">
+    <article class="section-card c-gold">
+      <h3>Screening Guidelines</h3>
+      <ul>
+        <li>Initiate annual screenings for adults over 40.</li><li>Incorporate lifestyle assessments as part of the screening.</li><li>Utilize electronic health records for tracking blood pressure trends.</li>
+      </ul>
+    </article>
+  
+    <article class="section-card c-purple">
+      <h3>Patient Management</h3>
+      <ul>
+        <li>Develop personalized treatment plans.</li><li>Varied drug therapies tailored to individual risk profiles.</li><li>Regularly review patient adherence and outcomes.</li>
+      </ul>
+    </article>
+  
+    <article class="section-card c-mint">
+      <h3>Technological Innovations</h3>
+      <ul>
+        <li>Leverage AI to identify at-risk individuals.</li><li>Utilize telehealth for continuous monitoring.</li><li>Implement wearable devices for real-time data collection.</li>
+      </ul>
+    </article>
+  </div>
+    </section>
+
+    <section class="section">
+      <h2>Action Plan</h2>
+      <div class="actions">
+    <div class="action-item">
+      <span class="action-index">1</span>
+      <span>Increase awareness campaigns in primary care settings.</span>
+    </div>
+  
+    <div class="action-item">
+      <span class="action-index">2</span>
+      <span>Advocate for policy changes supporting routine screenings.</span>
+    </div>
+  
+    <div class="action-item">
+      <span class="action-index">3</span>
+      <span>Collaborate on global research to improve intervention strategies.</span>
+    </div>
+  </div>
+    </section>
+
+    <section class="references">
+      <h2>References</h2>
+      <ol>
+    <li><strong>REF</strong> Reference pack pending source capture.</li>
+  </ol>
+      <p class="footer">Prepared in Vera for review and export.</p>
+    </section>
+  </main>
+</body>
+</html>

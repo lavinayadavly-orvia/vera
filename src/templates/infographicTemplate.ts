@@ -75,7 +75,7 @@ export function compileInfographicHtml(data: RealWorldInfographicData): string {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DoneandDone Infographic</title>
+<title>Vera Infographic</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Outfit:wght@300;400;500;600&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet">
 <style>
 /* ── RESET ── */
@@ -94,7 +94,7 @@ export function compileInfographicHtml(data: RealWorldInfographicData): string {
   --mint:    #3ECFA0;
   --gold:    #E8C547;
   --sky:     #5B9CF6;
-  --purple:  #9B72F5;
+  --purple:  #1E8A5B;
   --red:     #E44B4A;
 }
 
@@ -141,9 +141,9 @@ html, body {
 
 /* ── TOP BAR ── */
 .topbar { position: relative; background: #0A0B0E; border-bottom: 2px solid var(--coral); padding: 0 28px; height: 52px; display: flex; align-items: center; justify-content: space-between; z-index: 10; }
-.logo { display: flex; font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 800; }
-.logo-d1 { background: var(--coral); color: var(--ink); padding: 5px 10px; border-radius: 4px 0 0 4px; line-height: 1; }
-.logo-d2 { background: var(--warm); color: var(--ink); padding: 5px 10px; border-radius: 0 4px 4px 0; line-height: 1; }
+.logo { display: flex; align-items: center; gap: 10px; font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 800; color: var(--warm); }
+.logo-mark { width: 28px; height: 28px; flex-shrink: 0; }
+.logo-word { letter-spacing: .4px; }
 .topbar-tags { display: flex; gap: 6px; align-items: center; }
 .tag { font-size: 9px; font-weight: 600; letter-spacing: .8px; text-transform: uppercase; padding: 3px 9px; border-radius: 20px; border: 1px solid rgba(255,255,255,.12); color: var(--coral); font-family: 'Syne', sans-serif; }
 
@@ -268,7 +268,15 @@ html, body {
   <div class="bg-geo"></div><div class="bg-ring2"></div><div class="bg-mint-blob"></div><div class="bg-mint-ring"></div><div class="bg-lines"></div>
 
   <div class="topbar">
-    <div class="logo"><span class="logo-d1">Done</span><span class="logo-d2">andDone</span></div>
+    <div class="logo">
+      <svg class="logo-mark" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Vera">
+        <rect width="64" height="64" rx="16" fill="#F0FAFA" stroke="#CBD5D4" stroke-width="0.5"/>
+        <line x1="19" y1="13" x2="32" y2="48" stroke="#0D9488" stroke-width="6.5" stroke-linecap="round"/>
+        <line x1="45" y1="13" x2="32" y2="48" stroke="#0D9488" stroke-width="6.5" stroke-linecap="round"/>
+        <circle cx="32" cy="49" r="4.5" fill="#0D9488"/>
+      </svg>
+      <span class="logo-word">Vera</span>
+    </div>
     <div class="topbar-tags">
       <span class="tag">${safe(data.tags.format)}</span>
       <span class="tag">${safe(data.tags.extent)}</span>
@@ -359,7 +367,7 @@ html, body {
   </div>
 
   <div class="footer">
-    <div class="footer-left">DoneandDone — Medical Affairs<div class="mlr-badge">⚑ MLR REVIEW REQUIRED BEFORE DISTRIBUTION</div></div>
+  <div class="footer-left">Vera — Medical Affairs<div class="mlr-badge">⚑ MLR REVIEW REQUIRED BEFORE DISTRIBUTION</div></div>
     <div class="footer-mid">All claims are traceable to verified source documents via CLAIM_IDs.<br>This content is prepared for internal medical affairs use only.</div>
     <div class="footer-right">Generated: ${currentDate}<br>Claim IDs tracked</div>
   </div>

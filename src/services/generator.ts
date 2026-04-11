@@ -1,5 +1,5 @@
 import { generateText, generateObject, generateImage, generateSpeech } from '@/lib/openai';
-import type { ContentType, GeneratedOutput, DetailedGenerationParams, ContentSource, PromptBlueprint } from '@/types';
+import type { ContentType, GeneratedOutput, DetailedGenerationParams, ContentSource, PromptBlueprint, VideoAspectRatio, VideoCreativeDirection, VideoScene } from '@/types';
 import type { RealWorldInfographicData } from '@/templates/infographicTemplateLong';
 import { compileInfographicHtml as compileLongInfographicHtml } from '@/templates/infographicTemplateLong';
 import { compileInfographicHtml as compilePosterInfographicHtml } from '@/templates/infographicTemplate';
@@ -8,6 +8,8 @@ import { buildComplianceArchitectureSummary, inferApiNamespace } from '@/service
 import { evaluateOperationalGuardrails } from '@/services/operationalGuardrails';
 import { scrubGenerationInput } from '@/services/privacyScrubber';
 import { buildGovernedSearchQuery, buildSourcePolicyBundle } from '@/services/sourceGovernance';
+import { getDeliveryContract } from '@/services/deliveryContracts';
+import { getConfiguredVideoProvider, renderVideoSequence } from '@/services/videoProviders';
 import { validateOutput, sanitiseOutput } from '@/utils/outputValidator';
 import { normalizeMarkdownDocument } from '@/utils/markdownRenderer';
 
@@ -302,7 +304,7 @@ export async function generateDetailedContent(params: DetailedGenerationParams):
 
   try {
     // Build enhanced context for AI
-    const enhancedContext = buildEnhancedContext({ contentType, market, tone, length, scientificDepth, targetAudience });
+    const enhancedContext = buildEnhancedContext({ contentType, market, apiNamespace: namespace, tone, length, scientificDepth, targetAudience });
     
     // Build refinement context if this is an iteration
     const refinementContext = changeRequest ? buildRefinementContext(changeRequest, previousOutput) : null;
@@ -345,6 +347,7 @@ export async function generateDetailedContent(params: DetailedGenerationParams):
     output.extent = scientificDepth;
     output.audience = targetAudience;
     output.apiNamespace = namespace;
+    output.deliveryContract = getDeliveryContract(contentType);
     output = normaliseGeneratedOutput(output, { prompt, contentType, targetAudience });
 
     // Validate and sanitise output text against Gibberish / Hallucination boundaries
@@ -394,6 +397,7 @@ export async function generateDetailedContent(params: DetailedGenerationParams):
 
 
 interface EnhancedContext {
+  toneKey: DetailedGenerationParams['tone'];
   tone: string;
   lengthGuidance: string;
   depthGuidance: string;
@@ -402,6 +406,7 @@ interface EnhancedContext {
   contentType: ContentType;
   targetAudience: string;
   market: DetailedGenerationParams['market'];
+  apiNamespace: DetailedGenerationParams['apiNamespace'];
   marketGuidance: string;
 }
 
@@ -439,14 +444,16 @@ async function performGoogleSearch(query: string, limit: number): Promise<any> {
 
 // Helper function to extract and format sources from web search
 async function extractSourcesFromSearch(
-  request: Pick<DetailedGenerationParams, 'prompt' | 'contentType' | 'targetAudience'>,
+  request: Pick<DetailedGenerationParams, 'prompt' | 'contentType' | 'targetAudience' | 'market' | 'apiNamespace'>,
   limit: number = 5,
-): Promise<{ sources: ContentSource[]; sourcePromptBlock: string; governance: NonNullable<GeneratedOutput['sourceGovernance']> }> {
+): Promise<{ sources: ContentSource[]; screenedSources: ContentSource[]; sourcePromptBlock: string; governance: NonNullable<GeneratedOutput['sourceGovernance']> }> {
   try {
     const searchQuery = buildGovernedSearchQuery({
       prompt: request.prompt,
       contentType: request.contentType,
-      targetAudience: request.targetAudience
+      targetAudience: request.targetAudience,
+      market: request.market,
+      apiNamespace: request.apiNamespace
     });
     const searchResults = await performGoogleSearch(searchQuery, Math.min(10, Math.max(limit * 2, 8)));
     const candidates = [
@@ -463,14 +470,18 @@ async function extractSourcesFromSearch(
     return buildSourcePolicyBundle({
       prompt: request.prompt,
       contentType: request.contentType,
-      targetAudience: request.targetAudience
+      targetAudience: request.targetAudience,
+      market: request.market,
+      apiNamespace: request.apiNamespace
     }, candidates, limit);
   } catch (error) {
     console.error('Error extracting sources:', error);
     return buildSourcePolicyBundle({
       prompt: request.prompt,
       contentType: request.contentType,
-      targetAudience: request.targetAudience
+      targetAudience: request.targetAudience,
+      market: request.market,
+      apiNamespace: request.apiNamespace
     }, [], limit);
   }
 }
@@ -478,8 +489,8 @@ async function extractSourcesFromSearch(
 // Removed addGeneralKnowledgeSource helper - sources are only added when credible sources are found
 // No fallback sources to prevent fabrication
 
-function buildEnhancedContext(params: Pick<DetailedGenerationParams, 'contentType' | 'market' | 'tone' | 'length' | 'scientificDepth' | 'targetAudience'>): EnhancedContext {
-  const { contentType, market, tone, length, scientificDepth, targetAudience } = params;
+function buildEnhancedContext(params: Pick<DetailedGenerationParams, 'contentType' | 'market' | 'apiNamespace' | 'tone' | 'length' | 'scientificDepth' | 'targetAudience'>): EnhancedContext {
+  const { contentType, market, apiNamespace, tone, length, scientificDepth, targetAudience } = params;
 
   const lengthMap = {
     short: 'Keep it concise and to the point. Focus on key highlights only. Aim for brevity.',
@@ -506,7 +517,7 @@ function buildEnhancedContext(params: Pick<DetailedGenerationParams, 'contentTyp
 ═══════════════════════════════════════════════════════════
 IDENTITY & CORE MANDATE
 ═══════════════════════════════════════════════════════════
-You are a medical content design agent for DoneandDone, a Medical Affairs content studio. Your sole function is to transform verified, user-supplied source documents into structured content.
+You are a medical content design agent for Vera, a Medical Affairs content studio. Your sole function is to transform verified, user-supplied source documents into structured content.
 
 You are a DESIGNER and EXTRACTOR — never an AUTHOR.
 
@@ -548,6 +559,7 @@ EXTRACTION RULES & HALLUCINATION PREVENTION
   `.trim();
 
   return {
+    toneKey: tone,
     tone: `Adopt a ${tone} tone throughout`,
     lengthGuidance: lengthMap[length],
     depthGuidance: depthMap[scientificDepth],
@@ -556,6 +568,7 @@ EXTRACTION RULES & HALLUCINATION PREVENTION
     contentType,
     targetAudience,
     market,
+    apiNamespace,
     marketGuidance: marketGuidanceMap[market]
   };
 }
@@ -645,6 +658,16 @@ function getInfographicLayoutPlan(prompt: string): InfographicLayoutPlan {
       barSectionTitle: 'Trend Markers',
       recommendationsTitle: 'What To Do Next',
       sectionFallbackTitles: ['Past', 'Current State', 'What Comes Next'],
+    };
+  }
+
+  if (/\b(guide|prevention|symptoms|screening|warning signs|risk factors|action plan|what you need to know)\b/.test(text)) {
+    return {
+      mode: 'framework',
+      heroEyebrow: 'Guide View',
+      barSectionTitle: 'Key Checks',
+      recommendationsTitle: 'Actions To Take',
+      sectionFallbackTitles: ['Know the Risk', 'Know the Signals', 'Know the Next Step'],
     };
   }
 
@@ -755,6 +778,453 @@ function buildInfographicOutputProfile(params: Pick<DetailedGenerationParams, 'p
   };
 }
 
+type VideoPlatformIntent = 'presentation' | 'social' | 'shorts';
+
+interface VideoPackagingPlan {
+  aspectRatio: VideoAspectRatio;
+  imageSize: '1024x1024' | '1792x1024' | '1024x1792';
+  platformIntent: VideoPlatformIntent;
+  targetSceneCount: number;
+  targetDurationRange: [number, number];
+  targetTotalDuration: number;
+  onScreenTextWords: number;
+  voiceoverWords: number;
+  pacingLabel: string;
+}
+
+function inferVideoPackaging(prompt: string): VideoPackagingPlan {
+  const text = prompt.toLowerCase();
+
+  if (/\b(reel|reels|shorts|tiktok|vertical|story|stories|mobile-first|9:16)\b/.test(text)) {
+    return {
+      aspectRatio: '9:16',
+      imageSize: '1024x1792',
+      platformIntent: 'shorts',
+      targetSceneCount: 5,
+      targetDurationRange: [18, 28],
+      targetTotalDuration: 22,
+      onScreenTextWords: 5,
+      voiceoverWords: 18,
+      pacingLabel: 'fast, punchy, mobile-first',
+    };
+  }
+
+  if (/\b(square|feed post|feed video|linkedin feed|instagram feed|1:1)\b/.test(text)) {
+    return {
+      aspectRatio: '1:1',
+      imageSize: '1024x1024',
+      platformIntent: 'social',
+      targetSceneCount: 5,
+      targetDurationRange: [20, 32],
+      targetTotalDuration: 26,
+      onScreenTextWords: 6,
+      voiceoverWords: 22,
+      pacingLabel: 'tight, clear, social-native',
+    };
+  }
+
+  return {
+    aspectRatio: '16:9',
+    imageSize: '1792x1024',
+    platformIntent: 'presentation',
+    targetSceneCount: 6,
+    targetDurationRange: [30, 50],
+    targetTotalDuration: 36,
+    onScreenTextWords: 8,
+    voiceoverWords: 30,
+    pacingLabel: 'editorial, authoritative, widescreen explainer',
+  };
+}
+
+function inferNarrationVoice(tone: DetailedGenerationParams['tone']): 'alloy' | 'nova' | 'shimmer' {
+  if (tone === 'casual') return 'alloy';
+  if (tone === 'persuasive' || tone === 'inspirational') return 'shimmer';
+  return 'nova';
+}
+
+function getDefaultBeatRole(index: number, totalScenes: number): NonNullable<VideoScene['beatRole']> {
+  if (index === 0) return 'hook';
+  if (index === totalScenes - 1) return 'cta';
+  if (index === 1) return 'context';
+  if (index === totalScenes - 2) return 'resolution';
+  return index === 2 ? 'problem' : 'proof';
+}
+
+function getDefaultSceneDuration(index: number, totalScenes: number, platformIntent: VideoPlatformIntent): number {
+  if (platformIntent === 'shorts') {
+    const pattern = totalScenes === 5 ? [3, 4, 5, 5, 5] : [3, 4, 4, 5, 6, 6];
+    return pattern[index] || 4;
+  }
+
+  if (platformIntent === 'social') {
+    const pattern = totalScenes === 5 ? [3, 5, 6, 6, 6] : [3, 5, 5, 6, 6, 7];
+    return pattern[index] || 5;
+  }
+
+  const pattern = totalScenes === 6 ? [4, 6, 7, 7, 6, 6] : [4, 6, 7, 7, 6];
+  return pattern[index] || 6;
+}
+
+function getFallbackOnScreenText(role: NonNullable<VideoScene['beatRole']>, prompt: string): string {
+  const topic = cleanText(prompt, 'Key topic', 42);
+
+  switch (role) {
+    case 'hook':
+      return `Why ${topic} matters`;
+    case 'context':
+      return 'What is changing now';
+    case 'problem':
+      return 'The risk to watch';
+    case 'proof':
+      return 'What the evidence shows';
+    case 'resolution':
+      return 'What to do next';
+    case 'cta':
+    default:
+      return 'Take the next step';
+  }
+}
+
+function getFallbackVoiceover(role: NonNullable<VideoScene['beatRole']>, prompt: string): string {
+  switch (role) {
+    case 'hook':
+      return `Here is the one thing to understand about ${prompt}: the first few seconds should frame the stakes clearly.`;
+    case 'context':
+      return `Set the context quickly so the audience understands what is changing, who it affects, and why this topic matters now.`;
+    case 'problem':
+      return 'Show the pressure point or unmet need with one focused proof point, not a list of disconnected facts.';
+    case 'proof':
+      return 'Land the strongest evidence or differentiator in one clean beat so the viewer can retain it immediately.';
+    case 'resolution':
+      return 'Turn the evidence into a practical implication, recommendation, or decision-ready takeaway.';
+    case 'cta':
+    default:
+      return 'Close with a single clear next step that feels credible, specific, and easy to act on.';
+  }
+}
+
+function getFallbackVisualDescription(
+  role: NonNullable<VideoScene['beatRole']>,
+  prompt: string,
+  creativeDirection: VideoCreativeDirection,
+): string {
+  const subjectFocus = cleanText(creativeDirection.subjectFocus, 'the core subject', 64);
+  const motif = cleanText(creativeDirection.recurringMotif, 'a recurring visual motif', 64);
+
+  switch (role) {
+    case 'hook':
+      return `Hero opener focused on ${subjectFocus} with ${motif} introduced as the visual motif.`;
+    case 'context':
+      return `Context-setting scene that frames the topic around ${subjectFocus} using the established visual language.`;
+    case 'problem':
+      return `Problem scene that reveals the tension around ${prompt} without overcrowding the frame.`;
+    case 'proof':
+      return `Evidence-led scene that makes one central proof point visually obvious around ${subjectFocus}.`;
+    case 'resolution':
+      return `Resolution scene showing the strongest practical implication with the recurring motif still visible.`;
+    case 'cta':
+    default:
+      return `Closing scene with a decisive final frame that signals the next action and resolves the story cleanly.`;
+  }
+}
+
+function getFallbackShotType(role: NonNullable<VideoScene['beatRole']>): string {
+  switch (role) {
+    case 'hook':
+      return 'Hero close-up';
+    case 'context':
+      return 'Wide establishing';
+    case 'problem':
+      return 'Detail-driven medium shot';
+    case 'proof':
+      return 'Cinematic product or subject detail';
+    case 'resolution':
+      return 'Confident medium-wide';
+    case 'cta':
+    default:
+      return 'Hero end frame';
+  }
+}
+
+function getFallbackMotionCue(role: NonNullable<VideoScene['beatRole']>): string {
+  switch (role) {
+    case 'hook':
+      return 'Quick push-in with immediate focal reveal';
+    case 'context':
+      return 'Measured parallax drift';
+    case 'problem':
+      return 'Subtle lateral move to reveal contrast';
+    case 'proof':
+      return 'Steady cinematic hold with light movement';
+    case 'resolution':
+      return 'Controlled pull-back that creates clarity';
+    case 'cta':
+    default:
+      return 'Confident settle into final frame';
+  }
+}
+
+function getFallbackEditNote(role: NonNullable<VideoScene['beatRole']>): string {
+  switch (role) {
+    case 'hook':
+      return 'Open on impact; no cold start.';
+    case 'context':
+      return 'Use captions to orient, not to explain everything.';
+    case 'problem':
+      return 'Keep one tension point on screen.';
+    case 'proof':
+      return 'Hold long enough for the proof point to register.';
+    case 'resolution':
+      return 'Let the scene breathe before the close.';
+    case 'cta':
+    default:
+      return 'End on a decisive frame with clean brand-safe negative space.';
+  }
+}
+
+function normaliseBeatRole(value: unknown, index: number, totalScenes: number): NonNullable<VideoScene['beatRole']> {
+  const role = cleanText(value, '', 16).toLowerCase();
+  if (['hook', 'context', 'problem', 'proof', 'resolution', 'cta'].includes(role)) {
+    return role as NonNullable<VideoScene['beatRole']>;
+  }
+  return getDefaultBeatRole(index, totalScenes);
+}
+
+function normaliseSceneDuration(
+  value: unknown,
+  index: number,
+  totalScenes: number,
+  packaging: VideoPackagingPlan,
+): number {
+  const candidate = typeof value === 'number' ? value : Number.parseInt(cleanText(value, '', 8), 10);
+  const fallback = getDefaultSceneDuration(index, totalScenes, packaging.platformIntent);
+  if (!Number.isFinite(candidate)) return fallback;
+  return Math.min(8, Math.max(2, candidate));
+}
+
+function tuneSceneDurations(scenes: VideoScene[], packaging: VideoPackagingPlan): VideoScene[] {
+  const target = packaging.targetTotalDuration;
+  const current = scenes.reduce((sum, scene) => sum + scene.duration, 0);
+  if (current === target || scenes.length === 0) {
+    return scenes;
+  }
+
+  const delta = target - current;
+  const mutable = scenes.map((scene) => ({ ...scene }));
+  const adjustableIndexes = packaging.platformIntent === 'presentation'
+    ? [1, 2, 3, 4]
+    : [1, 2, 3];
+
+  let remaining = delta;
+  let cursor = 0;
+
+  while (remaining !== 0 && cursor < 24) {
+    const index = adjustableIndexes[cursor % adjustableIndexes.length];
+    const scene = mutable[index];
+    if (!scene) break;
+
+    if (remaining > 0 && scene.duration < 8) {
+      scene.duration += 1;
+      remaining -= 1;
+    } else if (remaining < 0 && scene.duration > 2) {
+      scene.duration -= 1;
+      remaining += 1;
+    }
+
+    cursor += 1;
+  }
+
+  return mutable;
+}
+
+function normaliseVideoScenes(
+  rawScenes: unknown,
+  prompt: string,
+  packaging: VideoPackagingPlan,
+  creativeDirection: VideoCreativeDirection,
+): VideoScene[] {
+  const sceneInputs = Array.isArray(rawScenes) ? rawScenes : [];
+
+  const scenes = Array.from({ length: packaging.targetSceneCount }, (_, index) => {
+    const rawScene = (sceneInputs[index] && typeof sceneInputs[index] === 'object')
+      ? sceneInputs[index] as Record<string, unknown>
+      : {};
+    const beatRole = normaliseBeatRole(rawScene.beatRole, index, packaging.targetSceneCount);
+
+    return {
+      sceneNumber: index + 1,
+      imageUrl: '',
+      sceneTitle: cleanNarrativeText(rawScene.sceneTitle, `${beatRole.charAt(0).toUpperCase()}${beatRole.slice(1)} Beat`, 4, 36),
+      beatRole,
+      visualDescription: cleanNarrativeText(
+        rawScene.visualDescription,
+        getFallbackVisualDescription(beatRole, prompt, creativeDirection),
+        28,
+        220,
+      ),
+      shotType: cleanNarrativeText(rawScene.shotType, getFallbackShotType(beatRole), 4, 40),
+      motionCue: cleanNarrativeText(rawScene.motionCue, getFallbackMotionCue(beatRole), 10, 84),
+      onScreenText: cleanNarrativeText(
+        rawScene.onScreenText,
+        getFallbackOnScreenText(beatRole, prompt),
+        packaging.onScreenTextWords,
+        packaging.platformIntent === 'shorts' ? 44 : 64,
+      ),
+      voiceoverText: cleanNarrativeText(
+        rawScene.voiceoverText,
+        getFallbackVoiceover(beatRole, prompt),
+        packaging.voiceoverWords,
+        packaging.platformIntent === 'shorts' ? 180 : 260,
+      ),
+      duration: normaliseSceneDuration(rawScene.durationSeconds, index, packaging.targetSceneCount, packaging),
+      transition: cleanNarrativeText(rawScene.transition, index === packaging.targetSceneCount - 1 ? 'Clean resolve' : 'Match cut', 8, 56),
+      editNote: cleanNarrativeText(rawScene.editNote, getFallbackEditNote(beatRole), 16, 100),
+      continuityAnchor: cleanNarrativeText(rawScene.continuityAnchor, creativeDirection.recurringMotif, 8, 56),
+    };
+  });
+
+  return tuneSceneDurations(scenes, packaging);
+}
+
+function buildVideoNarrationScript(scenes: Array<{ voiceoverText: string }>): string {
+  return scenes
+    .map((scene) => cleanNarrativeText(scene.voiceoverText, '', 48, 420))
+    .filter(Boolean)
+    .join(' ');
+}
+
+function buildVideoProductionMarkdown(
+  title: string,
+  prompt: string,
+  packaging: VideoPackagingPlan,
+  totalDuration: number,
+  creativeDirection: VideoCreativeDirection,
+  musicMood: string,
+  colorPalette: string[],
+  productionNotes: string[],
+  scenes: VideoScene[],
+  narrationScript: string,
+  sources: ContentSource[],
+): string {
+  const paletteLine = colorPalette.length > 0 ? colorPalette.join(', ') : 'Auto-selected';
+  const platformLabel = packaging.platformIntent === 'shorts'
+    ? 'Vertical short-form'
+    : packaging.platformIntent === 'social'
+      ? 'Social feed video'
+      : 'Widescreen explainer';
+
+  const sceneSections = scenes.flatMap((scene) => [
+    `### Scene ${scene.sceneNumber}: ${scene.sceneTitle || `Beat ${scene.sceneNumber}`}`,
+    `- Beat role: ${scene.beatRole || 'proof'}`,
+    `- Duration: ${scene.duration}s`,
+    `- Shot type: ${scene.shotType || 'Cinematic coverage'}`,
+    `- Motion cue: ${scene.motionCue || 'Subtle editorial motion'}`,
+    `- Visual direction: ${scene.visualDescription}`,
+    `- On-screen text: ${scene.onScreenText || 'No text overlay - apply captions in edit.'}`,
+    `- Voiceover: ${scene.voiceoverText}`,
+    `- Transition: ${scene.transition || 'Hard cut'}`,
+    `- Continuity anchor: ${scene.continuityAnchor || creativeDirection.recurringMotif}`,
+    `- Edit note: ${scene.editNote || 'Keep the beat clean and legible.'}`,
+    '',
+  ]);
+
+  const noteLines = productionNotes.length > 0
+    ? productionNotes.map((note) => `- ${note}`)
+    : ['- Keep captions and logos separate from the generated imagery during edit.'];
+
+  return [
+    `# ${title}`,
+    '',
+    '## Production Snapshot',
+    `- Prompt focus: ${prompt}`,
+    `- Platform intent: ${platformLabel}`,
+    `- Aspect ratio: ${packaging.aspectRatio}`,
+    `- Runtime: ${totalDuration}s`,
+    `- Pacing: ${packaging.pacingLabel}`,
+    `- Music mood: ${musicMood}`,
+    `- Color palette: ${paletteLine}`,
+    '',
+    '## Creative Direction',
+    `- Story arc: ${creativeDirection.storyArc}`,
+    `- Hook strategy: ${creativeDirection.hookStrategy}`,
+    `- Voice tone: ${creativeDirection.voiceTone}`,
+    `- Visual style: ${creativeDirection.visualStyle}`,
+    `- Subject focus: ${creativeDirection.subjectFocus}`,
+    `- Recurring motif: ${creativeDirection.recurringMotif}`,
+    `- Camera language: ${creativeDirection.cameraLanguage}`,
+    `- Edit rhythm: ${creativeDirection.editRhythm}`,
+    `- Caption style: ${creativeDirection.captionStyle}`,
+    ...creativeDirection.continuityNotes.map((note) => `- Continuity note: ${note}`),
+    ...creativeDirection.doNotShow.map((note) => `- Avoid: ${note}`),
+    '',
+    '## Scene Plan',
+    ...sceneSections,
+    '## Full Narration',
+    narrationScript,
+    '',
+    '## Production Notes',
+    ...noteLines,
+    '',
+    buildDisplayReferenceSection(sources),
+  ].join('\n');
+}
+
+function buildVideoSceneImagePrompt(
+  scene: VideoScene,
+  prompt: string,
+  context: EnhancedContext,
+  packaging: VideoPackagingPlan,
+  creativeDirection: VideoCreativeDirection,
+  colorPalette: string[],
+): string {
+  const paletteLine = colorPalette.length > 0
+    ? `Use this palette direction: ${colorPalette.join(', ')}.`
+    : 'Use a disciplined, premium editorial color palette.';
+  const continuityLine = creativeDirection.continuityNotes.length > 0
+    ? `Continuity requirements: ${creativeDirection.continuityNotes.join('; ')}.`
+    : 'Maintain continuity across the full sequence.';
+  const avoidLine = creativeDirection.doNotShow.length > 0
+    ? `Avoid: ${creativeDirection.doNotShow.join(', ')}.`
+    : 'Avoid clutter, collage layouts, stock-photo montages, UI screenshots, and infographic panels.';
+
+  return `Create a single cinematic key frame for Scene ${scene.sceneNumber} of a cohesive video sequence about: ${prompt}
+
+Scene role: ${scene.beatRole}
+Scene title: ${scene.sceneTitle}
+Scene brief: ${scene.visualDescription}
+Shot type: ${scene.shotType}
+Implied motion: ${scene.motionCue}
+Continuity anchor: ${scene.continuityAnchor || creativeDirection.recurringMotif}
+Caption to be added later: ${scene.onScreenText || 'No caption'}
+
+Creative direction:
+- Visual style: ${creativeDirection.visualStyle}
+- Subject focus: ${creativeDirection.subjectFocus}
+- Recurring motif: ${creativeDirection.recurringMotif}
+- Camera language: ${creativeDirection.cameraLanguage}
+- Edit rhythm: ${creativeDirection.editRhythm}
+- Hook strategy: ${creativeDirection.hookStrategy}
+- Voice tone: ${creativeDirection.voiceTone}
+- Caption style: ${creativeDirection.captionStyle}
+
+${paletteLine}
+${continuityLine}
+${avoidLine}
+
+Frame requirements:
+- ${packaging.aspectRatio} aspect ratio
+- One focal action only
+- No split screens or multi-panel layouts
+- No text, subtitles, letters, numbers, logos, labels, or watermarks rendered into the image
+- Leave clean negative space for editorial captions
+- High-end, scroll-stopping composition with clear focal hierarchy
+- Consistent wardrobe, environment, and visual language across scenes when people or products appear
+- Professional, premium, broadcast-quality lighting and art direction
+
+Audience: ${context.audienceGuidance}
+Tone: ${context.tone}. Pacing target: ${packaging.pacingLabel}.`;
+}
+
 function stripMarkup(value: string): string {
   return value
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
@@ -793,6 +1263,49 @@ function cleanText(value: unknown, fallback = '', maxLength = 160): string {
   return cleaned.length > maxLength
     ? `${cleaned.slice(0, maxLength - 1).trimEnd()}…`
     : cleaned;
+}
+
+function stripAuditTokens(value: string): string {
+  return value
+    .replace(/\[SOURCE NEEDED[^\]]*\]/gi, ' ')
+    .replace(/\bSOURCE NEEDED\b/gi, ' ')
+    .replace(/\bsource needed for verification\b/gi, ' ')
+    .replace(/\bCLAIM_ID\b[:\s-]*C\d{3,4}/gi, ' ')
+    .replace(/\(C\d{3,4}\)/gi, ' ')
+    .replace(/\bC\d{3,4}\b/g, ' ')
+    .replace(/\bN\/A\b/gi, ' ')
+    .replace(/\s+([,.;:!?])/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function cleanNarrativeText(value: unknown, fallback = '', maxWords = 18, maxLength = 180): string {
+  const raw = typeof value === 'string'
+    ? value
+    : Array.isArray(value)
+      ? value.map((item) => (typeof item === 'string' ? item : '')).filter(Boolean).join(' ')
+      : value == null
+        ? ''
+        : String(value);
+
+  const cleaned = stripAuditTokens(stripMarkup(raw))
+    .replace(/\s+/g, ' ')
+    .replace(/^[,.;:!?\-\s]+|[,.;:!?\-\s]+$/g, '')
+    .trim();
+
+  const candidate = cleaned || stripAuditTokens(fallback);
+  if (!candidate) {
+    return '';
+  }
+
+  const words = candidate.split(/\s+/).filter(Boolean);
+  const compacted = words.length > maxWords
+    ? `${words.slice(0, maxWords).join(' ')}…`
+    : candidate;
+
+  return compacted.length > maxLength
+    ? `${compacted.slice(0, maxLength - 1).trimEnd()}…`
+    : compacted;
 }
 
 function compactText(value: unknown, fallback = '', maxWords = 12, maxLength = 160): string {
@@ -1260,6 +1773,9 @@ function buildRefinementContext(changeRequest: import('@/types').ChangeRequestDa
 }
 
 function assertSourceGovernanceUnlocked(governance: NonNullable<GeneratedOutput['sourceGovernance']>) {
+  if (governance.hardLockReasons && governance.hardLockReasons.length > 0) {
+    throw new Error(`Operational guardrail lock:\n${governance.hardLockReasons.map((reason) => `- [SOURCE_LOCK] ${reason}`).join('\n')}`);
+  }
   if (governance.hardLockReason) {
     throw new Error(`Operational guardrail lock:\n- [SOURCE_LOCK] ${governance.hardLockReason}`);
   }
@@ -1272,10 +1788,12 @@ async function generateEnhancedInfographic(
   refinementContext: RefinementContext | null = null,
   profile: InfographicOutputProfile,
 ): Promise<GeneratedOutput> {
-  const { sources, sourcePromptBlock, governance } = await extractSourcesFromSearch({
+  const { sources, screenedSources, sourcePromptBlock, governance } = await extractSourcesFromSearch({
     prompt,
     contentType: 'infographic',
-    targetAudience: context.targetAudience
+    targetAudience: context.targetAudience,
+    market: context.market,
+    apiNamespace: context.apiNamespace
   }, 5);
   assertSourceGovernanceUnlocked(governance);
   const layoutPlan = getInfographicLayoutPlan(prompt);
@@ -1387,7 +1905,7 @@ async function generateEnhancedInfographic(
         }
       ]
     },
-    prompt: `You are DoneandDone — a one-try content generator that produces publish-ready infographics with credible sources.${refinementInstructions}
+    prompt: `You are Vera — a one-try content generator that produces publish-ready infographics with credible sources.${refinementInstructions}
 
 GOAL: Create a complete, structured, brand-consistent infographic JSON output. Generate ONLY valid JSON matching the exact schema provided. Do not leave any fields blank.
 
@@ -1454,7 +1972,8 @@ ${webInsights ? `Use these credible web sources in your content:\n${webInsights}
 
   const { data } = await generateImage({
     prompt: imagePrompt,
-    n: 1
+    n: 1,
+    size: '1024x1792'
   });
 
   // Validate image URL is from free source
@@ -1469,36 +1988,155 @@ ${webInsights ? `Use these credible web sources in your content:\n${webInsights}
     contentType: 'infographic',
     content: compiledHtml,
     textContent,
+    theme: `${infographicData.hero.titleLine1} ${infographicData.hero.titleLine2}`.trim(),
+    audience: infographicData.tags.audience,
+    extent: infographicData.tags.extent,
     renderVariant: profile.renderVariant,
     format: 'html',
     downloadUrl: '#',
     previewUrl: data[0].url,
     sources: finalSources,
+    screenedSources: screenedSources.length > 0 ? screenedSources : undefined,
     sourceGovernance: governance,
     infographicData: undefined // Removed in favor of pure HTML string passing for the new layout
   };
 }
 
 async function generateEnhancedVideo(prompt: string, context: EnhancedContext, refinementContext: RefinementContext | null = null): Promise<GeneratedOutput> {
-  const { sources, sourcePromptBlock, governance } = await extractSourcesFromSearch({
+  const { sources, screenedSources, sourcePromptBlock, governance } = await extractSourcesFromSearch({
     prompt,
     contentType: 'video',
-    targetAudience: context.targetAudience
+    targetAudience: context.targetAudience,
+    market: context.market,
+    apiNamespace: context.apiNamespace
   }, 5);
   assertSourceGovernanceUnlocked(governance);
-  const webInsights = sources.slice(0, 3).map(s => `SOURCE: ${s.title} (${s.domain})\nFACTS: ${s.snippet || 'N/A'}`).join('\n\n') || '';
+  const videoPackaging = inferVideoPackaging(prompt);
+  const webInsights = sources.slice(0, 3).map((source, index) => `CLAIM_ID: ${toClaimId(index)}\nSOURCE: ${source.title} (${source.domain})\nFACTS: ${source.snippet || 'N/A'}`).join('\n\n') || '';
 
   const refinementInstructions = refinementContext 
     ? `\n\n${refinementContext.changeInstructions}${refinementContext.previousContent}\n\nIMPORTANT: Apply the requested changes while maintaining quality. ${refinementContext.keepUnchanged}`
     : '';
 
-  // Step 1: Generate video script structure
-  const { object: videoScript } = await generateObject({
-    prompt: `You are DoneandDone — a one-try video generator that creates compelling video content.${refinementInstructions}
+  const { object: creativeBrief } = await generateObject({
+    prompt: `You are Vera's creative director for short-form evidence-led videos.${refinementInstructions}
 
-GOAL: Create a complete video structure with scenes in ONE TRY.
+TASK: Build the creative direction for a video about "${prompt}".
 
-TASK: Generate video content for: "${prompt}"
+DELIVERY TARGET:
+- platform intent: ${videoPackaging.platformIntent}
+- aspect ratio: ${videoPackaging.aspectRatio}
+- target scene count: ${videoPackaging.targetSceneCount}
+- target runtime: ${videoPackaging.targetDurationRange[0]}-${videoPackaging.targetDurationRange[1]} seconds
+- pacing: ${videoPackaging.pacingLabel}
+
+The output must feel premium, coherent, and editor-ready. Think in terms of one clear story arc, one recurring visual motif, one voice, and one visual language. Keep it cinematic and specific.
+
+${context.tone}. ${context.lengthGuidance}
+${context.depthGuidance}
+${context.audienceGuidance}
+${context.marketGuidance}
+
+Return only the creative brief. Do not produce scenes yet.`,
+    schema: {
+      type: 'object',
+      properties: {
+        videoTitle: { type: 'string' },
+        storyArc: { type: 'string' },
+        hookStrategy: { type: 'string' },
+        voiceTone: { type: 'string' },
+        visualStyle: { type: 'string' },
+        subjectFocus: { type: 'string' },
+        recurringMotif: { type: 'string' },
+        cameraLanguage: { type: 'string' },
+        editRhythm: { type: 'string' },
+        captionStyle: { type: 'string' },
+        musicMood: { type: 'string' },
+        colorPalette: {
+          type: 'array',
+          items: { type: 'string' }
+        },
+        productionNotes: {
+          type: 'array',
+          items: { type: 'string' }
+        },
+        continuityNotes: {
+          type: 'array',
+          items: { type: 'string' }
+        },
+        doNotShow: {
+          type: 'array',
+          items: { type: 'string' }
+        }
+      },
+      required: ['videoTitle', 'storyArc', 'hookStrategy', 'voiceTone', 'visualStyle', 'subjectFocus', 'recurringMotif', 'cameraLanguage', 'editRhythm', 'captionStyle', 'musicMood', 'productionNotes']
+    }
+  });
+
+  const videoTitle = cleanText(creativeBrief.videoTitle, buildFallbackTitle(prompt, 'video'), 80);
+  const creativeDirection: VideoCreativeDirection = {
+    storyArc: cleanText(creativeBrief.storyArc, 'Hook -> context -> proof -> action', 120),
+    hookStrategy: cleanText(creativeBrief.hookStrategy, 'Open on the clearest tension or upside immediately.', 120),
+    voiceTone: cleanText(creativeBrief.voiceTone, 'Clear, assured, evidence-led', 80),
+    visualStyle: cleanText(creativeBrief.visualStyle, 'Premium editorial realism with disciplined composition', 120),
+    subjectFocus: cleanText(creativeBrief.subjectFocus, prompt, 100),
+    recurringMotif: cleanText(creativeBrief.recurringMotif, 'One recurring visual motif that threads the full story', 80),
+    cameraLanguage: cleanText(creativeBrief.cameraLanguage, 'Controlled cinematic framing with premium movement', 100),
+    editRhythm: cleanText(creativeBrief.editRhythm, videoPackaging.pacingLabel, 80),
+    captionStyle: cleanText(creativeBrief.captionStyle, 'Short supers with strong hierarchy and clear negative space', 80),
+    continuityNotes: Array.isArray(creativeBrief.continuityNotes)
+      ? creativeBrief.continuityNotes.map((note: unknown) => cleanText(note, '', 90)).filter(Boolean).slice(0, 4)
+      : [],
+    doNotShow: Array.isArray(creativeBrief.doNotShow)
+      ? creativeBrief.doNotShow.map((note: unknown) => cleanText(note, '', 60)).filter(Boolean).slice(0, 5)
+      : [],
+  };
+  const productionNotes = Array.isArray(creativeBrief.productionNotes)
+    ? creativeBrief.productionNotes.map((note: unknown) => cleanText(note, '', 120)).filter(Boolean).slice(0, 6)
+    : [];
+  const musicMood = cleanText(creativeBrief.musicMood, 'Modern, confident, editorial', 80);
+  const colorPalette = Array.isArray(creativeBrief.colorPalette)
+    ? creativeBrief.colorPalette.map((color: unknown) => cleanText(color, '', 24)).filter(Boolean).slice(0, 5)
+    : [];
+
+  const { object: scenePlan } = await generateObject({
+    prompt: `You are Vera's video script lead. Build the scene plan for a production-ready video.${refinementInstructions}
+
+TASK: Create the exact scene sequence for "${prompt}".
+
+Creative direction:
+- title: ${videoTitle}
+- story arc: ${creativeDirection.storyArc}
+- hook strategy: ${creativeDirection.hookStrategy}
+- voice tone: ${creativeDirection.voiceTone}
+- visual style: ${creativeDirection.visualStyle}
+- subject focus: ${creativeDirection.subjectFocus}
+- recurring motif: ${creativeDirection.recurringMotif}
+- camera language: ${creativeDirection.cameraLanguage}
+- edit rhythm: ${creativeDirection.editRhythm}
+- caption style: ${creativeDirection.captionStyle}
+- continuity notes: ${creativeDirection.continuityNotes.join('; ') || 'Maintain continuity in wardrobe, environment, and motif.'}
+- avoid: ${creativeDirection.doNotShow.join(', ') || 'crowded layouts, rendered text, split screens, collage visuals'}
+
+Platform requirements:
+- platform intent: ${videoPackaging.platformIntent}
+- aspect ratio: ${videoPackaging.aspectRatio}
+- exact scene count: ${videoPackaging.targetSceneCount}
+- total runtime target: ${videoPackaging.targetDurationRange[0]}-${videoPackaging.targetDurationRange[1]} seconds
+- on-screen text: max ${videoPackaging.onScreenTextWords} words per scene
+- voiceover: max ${videoPackaging.voiceoverWords} words per scene
+- pacing: ${videoPackaging.pacingLabel}
+
+Scene responsibilities:
+- Scene 1 must be a hook
+- Final scene must be a CTA or decisive takeaway
+- Every scene must have one job only
+- Each scene must feel like part of the same film, not a new concept
+- No filler, no repeated points, no overcrowded supers
+- Never output workflow or audit markers in user-facing fields.
+- Forbidden in sceneTitle, onScreenText, voiceoverText, transition, and editNote:
+  [SOURCE NEEDED], SOURCE:, CLAIM_ID, C001/C002/etc., page references, bracketed placeholders, N/A, or the words "source needed".
+- If evidence is thin, write clean, generic editorial copy. Do not verbalize missing sourcing.
 
 ${context.tone}. ${context.lengthGuidance}
 ${context.depthGuidance}
@@ -1507,139 +2145,177 @@ ${context.marketGuidance}
 ${context.sopGuidance}
 ${sourcePromptBlock}
 
-${webInsights ? `Use these credible web sources:\n${webInsights}\n` : ''}
+${webInsights ? `Use these credible web sources:\n${webInsights}\n\nEvery factual claim in voiceover or on-screen text must stay tied to the provided sources. If support is thin, keep the scene directional rather than inventing numbers.` : ''}
 
-Create 3-6 video scenes with:
-- Opening scene: Attention-grabbing hook (2-3 seconds)
-- Middle scenes: Key message/story development (4-6 seconds each)
-- Closing scene: Call-to-action or key takeaway (2-3 seconds)
-
-Each scene needs:
-- Compelling visual description (what appears on screen)
-- On-screen text (if any) - short, impactful phrases
-- Voiceover text (what narrator says) - conversational, engaging
-- Duration in seconds
-
-Total video should be 15-45 seconds (short-form optimized).
-
-Make it scroll-stopping, data-backed when possible, emotionally engaging.`,
+Return only the scenes.`,
     schema: {
       type: 'object',
       properties: {
-        videoTitle: { type: 'string' },
-        totalDuration: { type: 'number' },
         scenes: {
           type: 'array',
           items: {
             type: 'object',
             properties: {
               sceneNumber: { type: 'number' },
+              beatRole: { type: 'string' },
+              sceneTitle: { type: 'string' },
               visualDescription: { type: 'string' },
+              shotType: { type: 'string' },
+              motionCue: { type: 'string' },
               onScreenText: { type: 'string' },
               voiceoverText: { type: 'string' },
-              durationSeconds: { type: 'number' }
+              durationSeconds: { type: 'number' },
+              transition: { type: 'string' },
+              editNote: { type: 'string' },
+              continuityAnchor: { type: 'string' }
             },
-            required: ['sceneNumber', 'visualDescription', 'voiceoverText', 'durationSeconds']
+            required: ['sceneNumber', 'beatRole', 'sceneTitle', 'visualDescription', 'shotType', 'motionCue', 'voiceoverText', 'durationSeconds', 'transition', 'editNote', 'continuityAnchor']
           }
-        },
-        musicMood: { type: 'string' },
-        colorPalette: {
-          type: 'array',
-          items: { type: 'string' }
         }
       },
-      required: ['videoTitle', 'totalDuration', 'scenes']
+      required: ['scenes']
     }
   });
 
-  console.log(`Generated video script with ${videoScript.scenes.length} scenes, total ${videoScript.totalDuration}s`);
+  const plannedScenes = normaliseVideoScenes(scenePlan.scenes, prompt, videoPackaging, creativeDirection);
 
-  // Step 2: Generate key frames/visuals for each scene
-  const sceneImagePromises = videoScript.scenes.map(async (scene: any) => {
+  const sceneImagePromises = plannedScenes.map(async (scene) => {
     const { data } = await generateImage({
-      prompt: `Create scene ${scene.sceneNumber} for a professional ${videoScript.totalDuration}-second video about: ${prompt}.
-      
-Scene visual: ${scene.visualDescription}
-${scene.onScreenText ? `On-screen text overlay: "${scene.onScreenText}"` : ''}
-${context.tone}. Target audience: ${context.audienceGuidance}
-
-Style requirements:
-- 16:9 aspect ratio (1920x1080 or similar)
-- Cinematic, broadcast-quality visuals
-- ${videoScript.colorPalette ? `Use colors: ${videoScript.colorPalette.join(', ')}` : 'Professional, vibrant color palette'}
-- ${scene.onScreenText ? 'Include bold, readable text overlay' : 'Clean visuals without text'}
-- High-impact, attention-grabbing composition
-- Mobile-optimized and scroll-stopping quality`,
-      n: 1
+      prompt: buildVideoSceneImagePrompt(
+        scene,
+        prompt,
+        context,
+        videoPackaging,
+        creativeDirection,
+        colorPalette,
+      ),
+      n: 1,
+      size: videoPackaging.imageSize
     });
 
     logValidationReport([data[0].url], `Video Scene ${scene.sceneNumber}`);
 
     return {
-      sceneNumber: scene.sceneNumber,
+      ...scene,
       imageUrl: data[0].url,
-      visualDescription: scene.visualDescription,
-      onScreenText: scene.onScreenText || '',
-      voiceoverText: scene.voiceoverText,
-      duration: scene.durationSeconds
     };
   });
 
-  const videoScenes = await Promise.all(sceneImagePromises);
+  const configuredVideoProvider = getConfiguredVideoProvider();
+  if (!configuredVideoProvider) {
+    throw new Error('Video generation requires a configured render provider before Vera can deliver a final MP4.');
+  }
 
-  console.log(`Generated ${videoScenes.length} video scene frames`);
+  const renderedVideoPromise = renderVideoSequence({
+    prompt,
+    aspectRatio: videoPackaging.aspectRatio,
+    scenes: plannedScenes,
+    creativeDirection,
+  });
 
-  // Step 3: Generate thumbnail (can be scene 1 or custom)
+  const [videoScenes, renderedVideo] = await Promise.all([
+    Promise.all(sceneImagePromises),
+    renderedVideoPromise,
+  ]);
+
   const { data: thumbnailData } = await generateImage({
-    prompt: `Create a cinematic, high-impact video thumbnail for: ${prompt}. 
-    ${context.tone}. Target audience: ${context.audienceGuidance}
-    Title overlay: "${videoScript.videoTitle}"
-    Style: Professional, engaging, visually striking YouTube/social media thumbnail.
-    Format: 16:9 aspect ratio, broadcast quality, compelling enough to stop scrolling.
-    ${videoScript.colorPalette ? `Use colors: ${videoScript.colorPalette.join(', ')}` : ''}`,
-    n: 1
+    prompt: `Create a premium video thumbnail for: ${prompt}.
+
+Use this creative direction:
+- Visual style: ${creativeDirection.visualStyle}
+- Subject focus: ${creativeDirection.subjectFocus}
+- Recurring motif: ${creativeDirection.recurringMotif}
+- Camera language: ${creativeDirection.cameraLanguage}
+- Hook strategy: ${creativeDirection.hookStrategy}
+
+${colorPalette.length > 0 ? `Color palette: ${colorPalette.join(', ')}.` : ''}
+${creativeDirection.doNotShow.length > 0 ? `Avoid: ${creativeDirection.doNotShow.join(', ')}.` : ''}
+
+Requirements:
+- ${videoPackaging.aspectRatio} aspect ratio
+- Strong focal point
+- Clean negative space for later title placement
+- No text, subtitles, logos, letters, or watermarks
+- One image, one clear visual idea
+- Premium, broadcast-quality finish`,
+    n: 1,
+    size: videoPackaging.imageSize
   });
 
   logValidationReport([thumbnailData[0].url], 'Video Thumbnail');
 
-  // Step 4: Format output with video metadata
-  const videoContent = JSON.stringify({
-    title: videoScript.videoTitle,
-    totalDuration: videoScript.totalDuration,
-    musicMood: videoScript.musicMood,
-    colorPalette: videoScript.colorPalette,
-    scenes: videoScenes.map(s => ({
-      scene: s.sceneNumber,
-      visual: s.visualDescription,
-      text: s.onScreenText,
-      voiceover: s.voiceoverText,
-      duration: s.duration,
-      imageUrl: s.imageUrl
-    })),
-    productionNote: 'Video frames generated. Use a video editor to combine frames with voiceover audio and transitions.'
-  }, null, 2);
-
-  // Sources already extracted earlier - use them
   const finalSources = sources.length > 0 ? sources.slice(0, 5) : [];
+  const narrationScript = buildVideoNarrationScript(videoScenes);
+  const totalDuration = videoScenes.reduce((sum, scene) => sum + scene.duration, 0);
+  if (!renderedVideo?.renderedVideoUrl) {
+    throw new Error('Video rendering failed before a final MP4 could be produced.');
+  }
+
+  const videoRenderSummary = renderedVideo.summary;
+  const videoContent = buildVideoProductionMarkdown(
+    videoTitle,
+    prompt,
+    videoPackaging,
+    totalDuration,
+    creativeDirection,
+    musicMood,
+    colorPalette,
+    productionNotes,
+    videoScenes,
+    narrationScript,
+    finalSources,
+  );
+  let audioUrl = undefined;
+
+  try {
+    const { url } = await generateSpeech({
+      text: narrationScript.slice(0, 4000),
+      voice: inferNarrationVoice(context.toneKey)
+    });
+    audioUrl = url;
+  } catch (error) {
+    console.warn('Failed to generate speech for video narration:', error);
+  }
 
   return {
     contentType: 'video',
     content: videoContent,
-    format: 'video-frames',
-    downloadUrl: thumbnailData[0].url,
+    textContent: videoContent,
+    theme: videoTitle,
+    audience: context.targetAudience,
+    extent: context.sopGuidance ? 'Governed' : 'Standard',
+    format: 'mp4',
+    downloadUrl: renderedVideo.renderedVideoUrl,
     previewUrl: thumbnailData[0].url,
+    renderedVideoUrl: renderedVideo.renderedVideoUrl,
+    audioUrl,
     videoThumbnail: thumbnailData[0].url,
     videoScenes: videoScenes,
+    videoPackage: {
+      title: videoTitle,
+      totalDuration,
+      aspectRatio: videoPackaging.aspectRatio,
+      platformIntent: videoPackaging.platformIntent,
+      musicMood,
+      colorPalette,
+      productionNotes,
+      narrationScript,
+      creativeDirection,
+    },
+    videoRender: videoRenderSummary,
     sources: finalSources.length > 0 ? finalSources : undefined,
+    screenedSources: screenedSources.length > 0 ? screenedSources : undefined,
     sourceGovernance: governance
   };
 }
 
 async function generateEnhancedPresentation(prompt: string, context: EnhancedContext, refinementContext: RefinementContext | null = null): Promise<GeneratedOutput> {
-  const { sources, sourcePromptBlock, governance } = await extractSourcesFromSearch({
+  const { sources, screenedSources, sourcePromptBlock, governance } = await extractSourcesFromSearch({
     prompt,
     contentType: 'presentation',
-    targetAudience: context.targetAudience
+    targetAudience: context.targetAudience,
+    market: context.market,
+    apiNamespace: context.apiNamespace
   }, 5);
   assertSourceGovernanceUnlocked(governance);
   const webInsights = sources.slice(0, 3).map(s => `SOURCE: ${s.title} (${s.domain})\nFACTS: ${s.snippet || 'N/A'}`).join('\n\n') || '';
@@ -1649,7 +2325,7 @@ async function generateEnhancedPresentation(prompt: string, context: EnhancedCon
     : '';
 
   const { text } = await generateText({
-    prompt: `You are DoneandDone — a one-try content generator that produces publish-ready presentations with credible sources.${refinementInstructions}
+    prompt: `You are Vera — a one-try content generator that produces publish-ready presentations with credible sources.${refinementInstructions}
 
 GOAL: Create a complete, structured presentation in ONE TRY.
 
@@ -1732,9 +2408,10 @@ RULES:
     contentType: 'presentation',
     content: text,
     format: 'pptx',
-    downloadUrl: data[0].url,
+    downloadUrl: '#',
     previewUrl: data[0].url,
     sources: finalSources.length > 0 ? finalSources : undefined,
+    screenedSources: screenedSources.length > 0 ? screenedSources : undefined,
     sourceGovernance: governance
   };
 }
@@ -1747,10 +2424,12 @@ async function generateEnhancedSocialPost(prompt: string, context: EnhancedConte
     return await generateCarouselPost(prompt, context, refinementContext);
   }
 
-  const { sources, sourcePromptBlock, governance } = await extractSourcesFromSearch({
+  const { sources, screenedSources, sourcePromptBlock, governance } = await extractSourcesFromSearch({
     prompt,
     contentType: 'social-post',
-    targetAudience: context.targetAudience
+    targetAudience: context.targetAudience,
+    market: context.market,
+    apiNamespace: context.apiNamespace
   }, 5);
   assertSourceGovernanceUnlocked(governance);
   const webInsights = sources.slice(0, 3).map(s => `SOURCE: ${s.title} (${s.domain})\nFACTS: ${s.snippet || 'N/A'}`).join('\n\n') || '';
@@ -1760,7 +2439,7 @@ async function generateEnhancedSocialPost(prompt: string, context: EnhancedConte
     : '';
 
   const { text } = await generateText({
-    prompt: `You are DoneandDone — a one-try content generator that produces publish-ready social posts with credible sources.${refinementInstructions}
+    prompt: `You are Vera — a one-try content generator that produces publish-ready social posts with credible sources.${refinementInstructions}
 
 GOAL: Create a complete, scroll-stopping social post in ONE TRY.
 
@@ -1832,15 +2511,18 @@ Format as JSON with: headline, copy, cta, hashtags (array), visualStyle, platfor
     downloadUrl: data[0].url,
     previewUrl: data[0].url,
     sources: finalSources.length > 0 ? finalSources : undefined,
+    screenedSources: screenedSources.length > 0 ? screenedSources : undefined,
     sourceGovernance: governance
   };
 }
 
 async function generateCarouselPost(prompt: string, context: EnhancedContext, refinementContext: RefinementContext | null = null): Promise<GeneratedOutput> {
-  const { sources, sourcePromptBlock, governance } = await extractSourcesFromSearch({
+  const { sources, screenedSources, sourcePromptBlock, governance } = await extractSourcesFromSearch({
     prompt,
     contentType: 'social-post',
-    targetAudience: context.targetAudience
+    targetAudience: context.targetAudience,
+    market: context.market,
+    apiNamespace: context.apiNamespace
   }, 5);
   assertSourceGovernanceUnlocked(governance);
   const webInsights = sources
@@ -1963,15 +2645,18 @@ Style requirements:
     previewUrl: carouselSlides[0].imageUrl,
     carouselSlides,
     sources: carouselFinalSources.length > 0 ? carouselFinalSources : undefined,
+    screenedSources: screenedSources.length > 0 ? screenedSources : undefined,
     sourceGovernance: governance
   };
 }
 
 async function generateEnhancedDocument(prompt: string, context: EnhancedContext, refinementContext: RefinementContext | null = null): Promise<GeneratedOutput> {
-  const { sources, sourcePromptBlock, governance } = await extractSourcesFromSearch({
+  const { sources, screenedSources, sourcePromptBlock, governance } = await extractSourcesFromSearch({
     prompt,
     contentType: 'document',
-    targetAudience: context.targetAudience
+    targetAudience: context.targetAudience,
+    market: context.market,
+    apiNamespace: context.apiNamespace
   }, 5);
   assertSourceGovernanceUnlocked(governance);
   const webInsights = sources.slice(0, 3).map(s => `SOURCE: ${s.title} (${s.domain})\nFACTS: ${s.snippet || 'N/A'}`).join('\n\n') || '';
@@ -1981,7 +2666,7 @@ async function generateEnhancedDocument(prompt: string, context: EnhancedContext
     : '';
 
   const { text } = await generateText({
-    prompt: `You are DoneandDone — a one-try content generator that produces publish-ready documents with credible sources.${refinementInstructions}
+    prompt: `You are Vera — a one-try content generator that produces publish-ready documents with credible sources.${refinementInstructions}
 
 GOAL: Create a complete, structured document in ONE TRY.
 
@@ -2057,18 +2742,21 @@ RULES:
     contentType: 'document',
     content: text,
     format: 'docx',
-    downloadUrl: data[0].url,
+    downloadUrl: '#',
     previewUrl: data[0].url,
     sources: finalSources.length > 0 ? finalSources : undefined,
+    screenedSources: screenedSources.length > 0 ? screenedSources : undefined,
     sourceGovernance: governance
   };
 }
 
 async function generateEnhancedReport(prompt: string, context: EnhancedContext, refinementContext: RefinementContext | null = null): Promise<GeneratedOutput> {
-  const { sources, sourcePromptBlock, governance } = await extractSourcesFromSearch({
+  const { sources, screenedSources, sourcePromptBlock, governance } = await extractSourcesFromSearch({
     prompt,
     contentType: 'report',
-    targetAudience: context.targetAudience
+    targetAudience: context.targetAudience,
+    market: context.market,
+    apiNamespace: context.apiNamespace
   }, 5);
   assertSourceGovernanceUnlocked(governance);
   const webInsights = sources.slice(0, 3).map(s => `SOURCE: ${s.title} (${s.domain})\nFACTS: ${s.snippet || 'N/A'}`).join('\n\n') || '';
@@ -2078,7 +2766,7 @@ async function generateEnhancedReport(prompt: string, context: EnhancedContext, 
     : '';
 
   const { text } = await generateText({
-    prompt: `You are DoneandDone — a one-try content generator that produces publish-ready reports with credible sources.${refinementInstructions}
+    prompt: `You are Vera — a one-try content generator that produces publish-ready reports with credible sources.${refinementInstructions}
 
 GOAL: Create a complete, data-driven report in ONE TRY.
 
@@ -2161,9 +2849,10 @@ RULES:
     contentType: 'report',
     content: text,
     format: 'pdf',
-    downloadUrl: data[0].url,
+    downloadUrl: '#',
     previewUrl: data[0].url,
     sources: finalSources.length > 0 ? finalSources : undefined,
+    screenedSources: screenedSources.length > 0 ? screenedSources : undefined,
     sourceGovernance: governance
   };
 }
@@ -2231,7 +2920,7 @@ function sanitizePromptBlueprint(theme: string, option: Partial<PromptBlueprint>
 
 export async function generatePromptsFromTheme(theme: string): Promise<PromptBlueprint[]> {
   const { object } = await generateObject({
-    prompt: `You are DoneandDone's briefing strategist.
+    prompt: `You are Vera's briefing strategist.
 
 A user has given a one-line brief:
 "${theme}"
@@ -2316,10 +3005,12 @@ Do not repeat the same prompt four times with minor wording changes.`,
 
 // Podcast and White Paper specific generators
 async function generatePodcastScript(prompt: string, context: EnhancedContext, refinementContext: RefinementContext | null = null): Promise<GeneratedOutput> {
-  const { sources, sourcePromptBlock, governance } = await extractSourcesFromSearch({
+  const { sources, screenedSources, sourcePromptBlock, governance } = await extractSourcesFromSearch({
     prompt,
     contentType: 'podcast',
-    targetAudience: context.targetAudience
+    targetAudience: context.targetAudience,
+    market: context.market,
+    apiNamespace: context.apiNamespace
   }, 5);
   assertSourceGovernanceUnlocked(governance);
   const webInsights = sources.slice(0, 3).map(s => `SOURCE: ${s.title} (${s.domain})\nFACTS: ${s.snippet || 'N/A'}`).join('\n\n') || '';
@@ -2329,7 +3020,7 @@ async function generatePodcastScript(prompt: string, context: EnhancedContext, r
     : '';
 
   const { text } = await generateText({
-    prompt: `You are DoneandDone — a one-try content generator that produces professional podcast scripts.${refinementInstructions}
+    prompt: `You are Vera — a one-try content generator that produces professional podcast scripts.${refinementInstructions}
 
 GOAL: Create a complete podcast script in ONE TRY.
 
@@ -2391,26 +3082,29 @@ Return the full response as markdown with headings for "Show Details" and "Audio
     });
     audioUrl = url;
   } catch (error) {
-    console.warn("Failed to generate speech for podcast:", error);
+    throw new Error(`Podcast audio generation failed: ${error instanceof Error ? error.message : 'unknown audio error'}`);
   }
 
   return {
     contentType: 'podcast',
     content: text,
     format: 'audio-script',
-    downloadUrl: data[0].url,
+    downloadUrl: audioUrl,
     previewUrl: data[0].url,
     audioUrl: audioUrl,
     sources: finalSources.length > 0 ? finalSources : undefined,
+    screenedSources: screenedSources.length > 0 ? screenedSources : undefined,
     sourceGovernance: governance
   };
 }
 
 async function generateWhitePaper(prompt: string, context: EnhancedContext, refinementContext: RefinementContext | null = null): Promise<GeneratedOutput> {
-  const { sources, sourcePromptBlock, governance } = await extractSourcesFromSearch({
+  const { sources, screenedSources, sourcePromptBlock, governance } = await extractSourcesFromSearch({
     prompt,
     contentType: 'white-paper',
-    targetAudience: context.targetAudience
+    targetAudience: context.targetAudience,
+    market: context.market,
+    apiNamespace: context.apiNamespace
   }, 8);
   assertSourceGovernanceUnlocked(governance);
   const webInsights = sources.slice(0, 5).map(s => `SOURCE: ${s.title} (${s.domain})\nFACTS: ${s.snippet || 'N/A'}`).join('\n\n') || '';
@@ -2420,7 +3114,7 @@ async function generateWhitePaper(prompt: string, context: EnhancedContext, refi
     : '';
 
   const { text } = await generateText({
-    prompt: `You are DoneandDone — a one-try content generator producing authoritative, extensive white papers.${refinementInstructions}
+    prompt: `You are Vera — a one-try content generator producing authoritative, extensive white papers.${refinementInstructions}
 
 GOAL: Create a comprehensive white paper in ONE TRY.
 
@@ -2468,9 +3162,10 @@ Format as a comprehensive markdown document.`,
     contentType: 'white-paper',
     content: text,
     format: 'pdf',
-    downloadUrl: data[0].url,
+    downloadUrl: '#',
     previewUrl: data[0].url,
     sources: finalSources.length > 0 ? finalSources : undefined,
+    screenedSources: screenedSources.length > 0 ? screenedSources : undefined,
     sourceGovernance: governance
   };
 }

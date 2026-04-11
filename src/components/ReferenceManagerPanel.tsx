@@ -62,6 +62,7 @@ export function ReferenceManagerPanel({ dossier }: ReferenceManagerPanelProps) {
   const activeDocument = dossier.sourceDocuments.find((document) => document.sourceDocId === activeClaim?.sourceDocId);
   const activeCoordinateMap = activeClaim?.coordinateMap || activeDocument?.coordinateMap;
   const mappedClaims = dossier.claims.filter((claim) => claim.status === 'mapped').length;
+  const hasDossierContent = dossier.sourceDocuments.length > 0 || dossier.claims.length > 0;
 
   return (
     <Card className="p-6 bg-card/60 backdrop-blur-sm border shadow-md">
@@ -95,48 +96,57 @@ export function ReferenceManagerPanel({ dossier }: ReferenceManagerPanelProps) {
               <Link2 className="w-4 h-4 text-primary" />
               <p className="font-medium">Sentence Map</p>
             </div>
-            <ScrollArea className="h-[420px] rounded-xl border bg-background/50">
-              <div className="space-y-3 p-3">
-                {dossier.claims.map((claim) => (
-                  <HoverCard key={claim.claimId} openDelay={100}>
-                    <HoverCardTrigger asChild>
-                      <button
-                        type="button"
-                        onMouseEnter={() => setActiveClaimId(claim.claimId)}
-                        onFocus={() => setActiveClaimId(claim.claimId)}
-                        onClick={() => setActiveClaimId(claim.claimId)}
-                        className={cn(
-                          'w-full text-left rounded-xl border p-3 transition-colors',
-                          activeClaimId === claim.claimId
-                            ? 'border-primary bg-primary/5'
-                            : 'border-border hover:border-primary/40',
-                        )}
-                      >
-                        <div className="flex flex-wrap items-center gap-2 mb-2">
-                          <span className="text-xs font-medium text-muted-foreground">{claim.claimId}</span>
-                          <span className={cn('px-2 py-0.5 rounded-full border text-[11px] font-medium', getClaimStatusClasses(claim.status))}>
-                            {claim.status.replace('-', ' ')}
-                          </span>
-                        </div>
-                        <p className="text-sm leading-relaxed text-foreground/90">{claim.text}</p>
-                        <p className="text-xs text-muted-foreground mt-2">
-                          {claim.sourceTitle || formatCoordinateLabel(claim.coordinateMap)}
+            {hasDossierContent ? (
+              <ScrollArea className="h-[420px] rounded-xl border bg-background/50">
+                <div className="space-y-3 p-3">
+                  {dossier.claims.map((claim) => (
+                    <HoverCard key={claim.claimId} openDelay={100}>
+                      <HoverCardTrigger asChild>
+                        <button
+                          type="button"
+                          onMouseEnter={() => setActiveClaimId(claim.claimId)}
+                          onFocus={() => setActiveClaimId(claim.claimId)}
+                          onClick={() => setActiveClaimId(claim.claimId)}
+                          className={cn(
+                            'w-full text-left rounded-xl border p-3 transition-colors',
+                            activeClaimId === claim.claimId
+                              ? 'border-primary bg-primary/5'
+                              : 'border-border hover:border-primary/40',
+                          )}
+                        >
+                          <div className="flex flex-wrap items-center gap-2 mb-2">
+                            <span className="text-xs font-medium text-muted-foreground">{claim.claimId}</span>
+                            <span className={cn('px-2 py-0.5 rounded-full border text-[11px] font-medium', getClaimStatusClasses(claim.status))}>
+                              {claim.status.replace('-', ' ')}
+                            </span>
+                          </div>
+                          <p className="text-sm leading-relaxed text-foreground/90">{claim.text}</p>
+                          <p className="text-xs text-muted-foreground mt-2">
+                            {claim.sourceTitle || formatCoordinateLabel(claim.coordinateMap)}
+                          </p>
+                        </button>
+                      </HoverCardTrigger>
+                      <HoverCardContent align="start" className="w-[380px] space-y-2">
+                        <p className="text-sm font-medium">{claim.sourceTitle || 'No linked reference yet'}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {claim.verbatimAnchor || 'This claim is waiting for a source anchor or locator.'}
                         </p>
-                      </button>
-                    </HoverCardTrigger>
-                    <HoverCardContent align="start" className="w-[380px] space-y-2">
-                      <p className="text-sm font-medium">{claim.sourceTitle || 'No linked reference yet'}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {claim.verbatimAnchor || 'This claim is waiting for a source anchor or locator.'}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {formatCoordinateLabel(claim.coordinateMap)}
-                      </p>
-                    </HoverCardContent>
-                  </HoverCard>
-                ))}
+                        <p className="text-xs text-muted-foreground">
+                          {formatCoordinateLabel(claim.coordinateMap)}
+                        </p>
+                      </HoverCardContent>
+                    </HoverCard>
+                  ))}
+                </div>
+              </ScrollArea>
+            ) : (
+              <div className="rounded-xl border border-dashed bg-background/60 p-4">
+                <p className="text-sm font-medium">No sources captured yet</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  This output does not have screened source documents attached, so the reference manager has nothing authoritative to map.
+                </p>
               </div>
-            </ScrollArea>
+            )}
           </div>
 
           <div className="space-y-3">
@@ -181,7 +191,7 @@ export function ReferenceManagerPanel({ dossier }: ReferenceManagerPanelProps) {
                       }}
                     />
                     <div
-                      className="absolute rounded-md border-2 border-primary/60 bg-primary/20 shadow-[0_0_0_1px_rgba(99,102,241,0.15)]"
+                      className="absolute rounded-md border-2 border-primary/60 bg-primary/20 shadow-[0_0_0_1px_rgba(249,115,22,0.15)]"
                       style={buildHighlightStyle(activeCoordinateMap)}
                     />
                     <div className="absolute left-4 top-4 right-4 text-[10px] uppercase tracking-[0.18em] text-slate-400">

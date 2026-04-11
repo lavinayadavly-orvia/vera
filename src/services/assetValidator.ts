@@ -1,7 +1,7 @@
 /**
  * Asset Validator Service
  *
- * Ensures all assets (images, icons) used in DoneandDone are from approved free sources.
+ * Ensures all assets (images, icons) used in Vera are from approved free sources.
  * Prevents accidental use of licensed or paid content.
  */
 

@@ -111,9 +111,15 @@ export function buildPDF(parsed: ParsedContent, stats: string[], metadata: PDFMe
   }
 
   function drawLogo(x: number, y: number, s?: number) {
-    s = s || 1; const w1 = 40 * s, w2 = 64 * s, h = 19 * s, r = 4 * s;
-    rr(x, y, w1, h, r, CORAL); tx('Done', x + w1 / 2, y + 13 * s, 9 * s, BG, 'center', true);
-    rr(x + w1, y, w2, h, r, WARM); tx('andDone', x + w1 + w2 / 2, y + 13 * s, 9 * s, BG, 'center', true);
+    s = s || 1;
+    const size = 19 * s;
+    const cx = x + size / 2;
+    const cy = y + size / 2;
+    const pad = 3.2 * s;
+    rr(x, y, size, size, 4 * s, [240, 250, 250], [203, 213, 212], 0.5);
+    ln2(x + pad + 2 * s, y + pad, cx, y + size - pad - 1.5 * s, [13, 148, 136], 2.1 * s);
+    ln2(x + size - pad - 2 * s, y + pad, cx, y + size - pad - 1.5 * s, [13, 148, 136], 2.1 * s);
+    circ(cx, y + size - pad - 1.1 * s, 1.4 * s, [13, 148, 136]);
   }
 
   // PAGE 1 — HERO INFOGRAPHIC
@@ -228,7 +234,7 @@ export function buildPDF(parsed: ParsedContent, stats: string[], metadata: PDFMe
   }
 
   fr(0, PH - 44, PW, 44, BG2); ln2(0, PH - 44, PW, PH - 44, CORAL, 1.5);
-  tx('DoneandDone — Medical Affairs Content Studio', ML, PH - 27, 8, WARM30, 'left', true);
+  tx('Vera — Medical Affairs Content Studio', ML, PH - 27, 8, WARM30, 'left', true);
   tx('Medical affairs review recommended before external distribution.', PW / 2, PH - 27, 7, WARM30, 'center', false);
   tx('1 / 2', PW - ML, PH - 27, 8, WARM30, 'right', false);
 
@@ -317,7 +323,7 @@ export function buildPDF(parsed: ParsedContent, stats: string[], metadata: PDFMe
   }
 
   fr(0, PH - 44, PW, 44, BG2); ln2(0, PH - 44, PW, PH - 44, CORAL, 1.5);
-  tx('DoneandDone — Medical Affairs Content Studio', ML, PH - 27, 8, WARM30, 'left', true);
+  tx('Vera — Medical Affairs Content Studio', ML, PH - 27, 8, WARM30, 'left', true);
   tx(metadata.extent + '  ·  ' + metadata.audience + '  ·  Internal review only', PW / 2, PH - 27, 7.5, WARM30, 'center', false);
   tx('Medical affairs review recommended before external distribution.', PW - ML, PH - 27, 7, WARM30, 'right', false);
 
@@ -329,5 +335,5 @@ export function generateAndDownloadPDF(content: string, metadata: PDFMetadata) {
   const stats = extractStats(content);
   const doc = buildPDF(parsed, stats, metadata);
   const slug = metadata.theme.replace(/\s+/g, '_').toLowerCase().slice(0, 40);
-  doc.save(`doneanddone_${slug}.pdf`);
+  doc.save(`vera_${slug}.pdf`);
 }

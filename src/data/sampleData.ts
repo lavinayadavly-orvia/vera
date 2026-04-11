@@ -1,5 +1,5 @@
 /**
- * Curated Sample Data for DoneandDone (Medical Affairs / RWE Focus)
+ * Curated Sample Data for Vera (Medical Affairs / RWE Focus)
  * All samples use free, non-licensed images and icons only
  * Sources: Unsplash, Pexels, Pixabay, Lucide Icons
  */

@@ -10,7 +10,8 @@ import { EditSuggestionChat } from '@/components/EditSuggestionChat';
 import { analyticsService } from '@/services/analytics';
 import { SampleGalleryModal } from '@/components/SampleGalleryModal';
 import { sampleData } from '@/data/sampleData';
-import { downloadAudioFile, downloadHtmlDocument, downloadJsonManifest, downloadMarkdown, downloadPresentationOutline, downloadPrimaryVisual, downloadStoryboard, downloadWordCompatibleDocument } from '@/utils/exporters';
+import { getPrimaryVisualUrl, hasHostedFinalDeliverable } from '@/services/outputAssets';
+import { downloadAudioFile, downloadHtmlDocument, downloadJsonManifest, downloadMarkdown, downloadPresentationDeck, downloadPrimaryVisual, downloadStoryboard, downloadWordCompatibleDocument } from '@/utils/exporters';
 import { renderMarkdownToHtml } from '@/utils/markdownRenderer';
 import { ReferenceManagerPanel } from '@/components/ReferenceManagerPanel';
 import { ComplianceArchitecturePanel } from '@/components/ComplianceArchitecturePanel';
@@ -35,8 +36,15 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
   const [showSamples, setShowSamples] = useState(false);
   const [activeTab, setActiveTab] = useState<'feedback' | 'chat'>('chat');
   const { toast } = useToast();
+  const visibleSources = output.sources && output.sources.length > 0
+    ? output.sources
+    : output.screenedSources || [];
+  const hasApprovedSources = Boolean(output.sources && output.sources.length > 0);
   const hasCarousel = output.carouselSlides && output.carouselSlides.length > 0;
   const totalSlides = hasCarousel ? output.carouselSlides!.length : 1;
+  const renderedVideoUrl = output.renderedVideoUrl || (output.format === 'mp4' ? output.downloadUrl : undefined);
+  const primaryVisualUrl = getPrimaryVisualUrl(output);
+  const hasHostedPrimaryDeliverable = hasHostedFinalDeliverable(output);
 
   const getFormatLabel = () => {
     const formats: Record<string, string> = {
@@ -49,7 +57,8 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
       'white-paper': 'White Paper',
       'pptx': 'Presentation Package',
       'docx': 'Document Package',
-      'carousel': 'Carousel (Multiple Slides)'
+      'carousel': 'Carousel (Multiple Slides)',
+      'social-post': 'Social Content'
     };
     return formats[output.format] || output.format.toUpperCase();
   };
@@ -80,15 +89,18 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
   const hasVideoScenes = output.videoScenes && output.videoScenes.length > 0;
   const currentVideoScene = hasVideoScenes ? output.videoScenes![currentSlide] : null;
   const displayUrl = currentSlideData?.imageUrl || currentVideoScene?.imageUrl || output.previewUrl;
+  const hasRenderedVideo = Boolean(renderedVideoUrl);
   const isVideoScript = output.format === 'video-script';
   const isAudioScript = output.format === 'audio-script';
   const isWhitePaper = output.format === 'white-paper';
   const isInfographic = output.contentType === 'infographic';
   const isHtmlDocument = output.format === 'html';
+  const isVideoProductionPackage = output.contentType === 'video' && Boolean(output.textContent || output.content);
   const isPresentation = output.contentType === 'presentation';
   const isDocument = output.contentType === 'document';
   const isReport = output.contentType === 'report';
   const isPodcast = output.contentType === 'podcast';
+  const isSocialPost = output.contentType === 'social-post';
   const isWhitePaperContent = output.contentType === 'white-paper';
   const isTextDocument = isVideoScript
     || isAudioScript
@@ -97,23 +109,35 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
     || isDocument
     || isReport
     || isPodcast
+    || isSocialPost
     || isWhitePaperContent
+    || isVideoProductionPackage
     || (isInfographic && !isHtmlDocument);
   const isVideoFrames = output.format === 'video-frames';
+  const videoCreativeDirection = output.videoPackage?.creativeDirection;
   const infographicFrameHeight = output.renderVariant === 'poster' ? 'h-[1123px]' : 'h-[1680px]';
-  const renderedTextDocumentHtml = renderMarkdownToHtml(output.content);
+  const renderedTextDocumentHtml = renderMarkdownToHtml(output.textContent || output.content);
+  const videoAspectClass = output.videoPackage?.aspectRatio === '9:16'
+    ? 'aspect-[9/16]'
+    : output.videoPackage?.aspectRatio === '1:1'
+      ? 'aspect-square'
+      : 'aspect-video';
   const textDocumentLabel = isVideoScript
     ? 'Video Script & Storyboard'
     : isAudioScript
       ? 'Podcast Dialogue Script'
+      : isVideoFrames
+        ? 'Video Production Script'
       : isPresentation
-        ? 'Presentation Outline'
+        ? 'Presentation Draft'
         : isDocument
           ? 'Document Draft'
-          : isReport
-            ? 'Report Draft'
-            : isWhitePaperContent || isWhitePaper
-              ? 'White Paper Draft'
+            : isReport
+              ? 'Report Draft'
+              : isSocialPost
+                ? 'Social Post Draft'
+              : isWhitePaperContent || isWhitePaper
+                ? 'White Paper Draft'
               : isInfographic
                 ? 'Infographic Content & Layout'
                 : 'Generated Content';
@@ -125,11 +149,12 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
   };
 
   return (
-    <div className="w-full max-w-5xl mx-auto space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
+    <div className="mx-auto w-full max-w-5xl space-y-6 animate-fade-in">
+      <div className="flex flex-col gap-4 rounded-[34px] border border-[#0b6b6f]/12 bg-white/94 px-6 py-6 shadow-[0_24px_90px_rgba(8,54,58,0.08)] backdrop-blur-md md:flex-row md:items-end md:justify-between md:px-8">
         <div>
-          <h2 className="text-2xl font-bold">Your Content is Ready!</h2>
-          <p className="text-muted-foreground mt-1">
+          <p className="text-[11px] uppercase tracking-[0.24em] text-[#c96a22]">Output ready</p>
+          <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-[#0b6b6f] md:text-4xl">Your content is ready.</h2>
+          <p className="mt-2 text-muted-foreground">
             Generated {output.contentType.replace('-', ' ')} • {getFormatLabel()}
             {getMarketLabel() && ` • ${getMarketLabel()}`}
             {hasCarousel && ` • ${totalSlides} slides`}
@@ -137,7 +162,7 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
             {iterationNumber > 1 && ` • Version ${iterationNumber}`}
           </p>
         </div>
-        <Button onClick={onNewGeneration} variant="outline">
+        <Button onClick={onNewGeneration} variant="outline" className="rounded-full border-[#0b6b6f]/12 bg-[#fbffff] px-5 text-[#0b6b6f] hover:bg-[#eff8f8]">
           <Sparkles className="w-4 h-4 mr-2" />
           Create New
         </Button>
@@ -145,18 +170,75 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
 
       {/* Iteration indicator */}
       {iterationNumber > 1 && (
-        <div className="bg-primary/10 border border-primary/20 rounded-lg p-3 flex items-center gap-2">
-          <RefreshCw className="w-4 h-4 text-primary" />
+        <div className="flex items-center gap-2 rounded-[22px] border border-[#0b6b6f]/18 bg-[#eff8f8] p-4">
+          <RefreshCw className="w-4 h-4 text-[#0b6b6f]" />
           <span className="text-sm font-medium">
             This is version {iterationNumber} of your content, refined based on your feedback
           </span>
         </div>
       )}
 
-      <Card className="p-8 bg-card/80 backdrop-blur-sm border-2 shadow-xl">
+      {output.deliveryContract && (
+        <div className="flex flex-col gap-2 rounded-[26px] border border-[#0b6b6f]/12 bg-white/94 p-5 shadow-[0_18px_60px_rgba(8,54,58,0.06)] md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-sm font-semibold">
+              Final deliverable: {output.deliveryContract.primaryDeliverable}
+            </p>
+            <p className="text-sm text-muted-foreground">
+              {output.deliveryContract.note}
+            </p>
+            {output.providerStack && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Active pipeline: {Object.entries(output.providerStack)
+                  .map(([stage, provider]) => `${stage}: ${provider}`)
+                  .join(' · ')}
+              </p>
+            )}
+            {!hasHostedPrimaryDeliverable && (
+              <p className="text-xs text-muted-foreground mt-1">
+                This deliverable is exported locally from the action buttons below rather than provided as a hosted file link.
+              </p>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <span className="rounded-full border border-[#0b6b6f]/12 bg-[#fbffff] px-2.5 py-1 text-xs font-medium text-[#0b6b6f]">
+              {output.deliveryContract.providerLabel}
+            </span>
+            {output.deliveryContract.supportingDeliverables.map((item) => (
+              <span key={item} className="rounded-full border border-[#ffcfaa] bg-[#fff8f2] px-2.5 py-1 text-xs font-medium text-[#a75b23]">
+                {item}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <Card className="rounded-[34px] border border-[#0b6b6f]/12 bg-white/96 p-8 shadow-[0_28px_110px_rgba(8,54,58,0.08)] backdrop-blur-md">
         <div className="relative">
-          <div className="aspect-video bg-muted rounded-xl flex items-center justify-center overflow-hidden shadow-inner">
-            {displayUrl && !isInfographic ? (
+          <div className={`${hasVideoScenes || hasRenderedVideo ? videoAspectClass : 'aspect-video'} flex items-center justify-center overflow-hidden rounded-[28px] bg-muted shadow-inner`}>
+            {hasRenderedVideo && !isInfographic ? (
+              <div className="relative w-full h-full bg-black">
+                <video
+                  controls
+                  className="w-full h-full object-contain"
+                  poster={output.videoThumbnail || output.previewUrl}
+                  src={renderedVideoUrl}
+                />
+                {isTextDocument && (
+                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent pointer-events-none p-4 text-white">
+                    <div className="flex items-center gap-2">
+                      <div className="w-10 h-10 bg-primary/90 rounded-full flex items-center justify-center">
+                        <Video className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <p className="font-semibold text-sm">Rendered Video + Production Package</p>
+                        <p className="text-xs text-white/80">Provider-rendered motion preview with storyboard, narration, and scene plan.</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : displayUrl && !isInfographic ? (
               <div className="relative w-full h-full">
                 <a href={displayUrl} target="_blank" rel="noopener noreferrer" className="block w-full h-full relative group cursor-pointer">
                   <img 
@@ -186,6 +268,8 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
                         <p className="text-xs text-white/80">
                           {isAudioScript
                             ? 'Full audio script, preview audio, and cover art'
+                            : isVideoFrames
+                              ? 'Production script, narration, and scene package'
                             : isPresentation
                               ? 'Slide structure, talking points, and export-ready outline'
                               : isDocument || isReport || isWhitePaperContent || isWhitePaper
@@ -216,7 +300,7 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
 
           {/* Video Script Info Banner */}
           {isVideoScript && (
-            <div className="mt-4 p-4 bg-primary/5 border border-primary/20 rounded-lg">
+            <div className="mt-4 rounded-[22px] border border-[#0b6b6f]/18 bg-[#eff8f8] p-4">
               <p className="text-sm text-muted-foreground">
                 <strong className="text-foreground">Note:</strong> Full video production requires video editing software. 
                 We've generated a professional script with scene breakdowns and a thumbnail. 
@@ -226,14 +310,24 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
           )}
 
           {/* Video Frames Info Banner */}
-          {isVideoFrames && (
-            <div className="mt-4 p-4 bg-primary/5 border border-primary/20 rounded-lg">
-              <p className="text-sm text-muted-foreground">
-                <strong className="text-foreground">Video Scenes Generated!</strong> We've created {output.videoScenes!.length} cinematic frames with voiceover text for your video. 
-                Download each scene below and combine them using video editing software like CapCut, Adobe Premiere, or online tools.
-              </p>
-            </div>
-          )}
+        {isVideoFrames && (
+          <div className="mt-4 rounded-[22px] border border-[#0b6b6f]/18 bg-[#eff8f8] p-4">
+            <p className="text-sm text-muted-foreground">
+                <strong className="text-foreground">
+                  {output.videoRender?.status === 'failed'
+                    ? 'Rendered video failed.'
+                    : output.videoRender?.status === 'skipped'
+                      ? 'Rendered video not configured.'
+                      : 'Video package generated.'}
+                </strong>{' '}
+                {output.videoRender?.status === 'failed'
+                  ? `Vera generated the storyboard package, but the external render step failed. ${output.videoRender.note || ''}`
+                  : output.videoRender?.status === 'skipped'
+                    ? output.videoRender.note || 'This run produced a storyboard, narration track, and cinematic frames only.'
+                    : 'You now have a creative direction, structured scene plan, narration track, and cinematic frame set for assembly in your editor.'}
+            </p>
+          </div>
+        )}
 
           {/* Carousel/Video Navigation */}
           {(hasCarousel || hasVideoScenes) && (
@@ -256,7 +350,7 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
               </Button>
 
               {/* Slide Counter */}
-              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-background/90 backdrop-blur-sm px-4 py-2 rounded-full text-sm font-medium">
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full border border-[#0b6b6f]/12 bg-white/92 px-4 py-2 text-sm font-medium shadow-sm backdrop-blur-sm">
                 {currentSlide + 1} / {hasCarousel ? totalSlides : output.videoScenes!.length}
               </div>
             </>
@@ -264,13 +358,13 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
         </div>
 
         {/* Audio Player for Podcasts */}
-        {isAudioScript && output.audioUrl && (
+        {(isAudioScript || isVideoFrames) && output.audioUrl && (
           <div className="mt-6 pt-6 border-t space-y-4">
             <h3 className="font-semibold text-lg flex items-center gap-2">
               <Headphones className="w-5 h-5 text-primary" />
-              Listen to Podcast
+              {isVideoFrames ? 'Listen to Narration' : 'Listen to Podcast'}
             </h3>
-            <div className="bg-muted/50 p-4 rounded-lg">
+            <div className="rounded-[20px] border border-[#0b6b6f]/10 bg-[#f7fbfb] p-4">
               <audio 
                 controls 
                 className="w-full h-12 rounded-md"
@@ -284,6 +378,64 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
             <p className="text-xs text-muted-foreground italic mt-2">
               Generated audio is for preview purposes.
             </p>
+          </div>
+        )}
+
+        {output.contentType === 'video' && output.videoPackage && (
+          <div className="mt-6 pt-6 border-t grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="rounded-lg border bg-muted/30 p-4">
+              <div className="text-xs uppercase tracking-widest text-muted-foreground mb-1">Runtime</div>
+              <div className="text-sm font-semibold">{output.videoPackage.totalDuration}s</div>
+            </div>
+            <div className="rounded-lg border bg-muted/30 p-4">
+              <div className="text-xs uppercase tracking-widest text-muted-foreground mb-1">Aspect</div>
+              <div className="text-sm font-semibold">{output.videoPackage.aspectRatio}</div>
+            </div>
+            <div className="rounded-lg border bg-muted/30 p-4">
+              <div className="text-xs uppercase tracking-widest text-muted-foreground mb-1">Platform</div>
+              <div className="text-sm font-semibold capitalize">{output.videoPackage.platformIntent}</div>
+            </div>
+            <div className="rounded-lg border bg-muted/30 p-4">
+              <div className="text-xs uppercase tracking-widest text-muted-foreground mb-1">Music Mood</div>
+              <div className="text-sm font-semibold">{output.videoPackage.musicMood}</div>
+            </div>
+            {videoCreativeDirection && (
+              <>
+                <div className="rounded-lg border bg-muted/30 p-4 md:col-span-2">
+                  <div className="text-xs uppercase tracking-widest text-muted-foreground mb-1">Story Arc</div>
+                  <div className="text-sm font-semibold">{videoCreativeDirection.storyArc}</div>
+                </div>
+                <div className="rounded-lg border bg-muted/30 p-4 md:col-span-2">
+                  <div className="text-xs uppercase tracking-widest text-muted-foreground mb-1">Visual Style</div>
+                  <div className="text-sm font-semibold">{videoCreativeDirection.visualStyle}</div>
+                </div>
+                <div className="rounded-lg border bg-muted/30 p-4 md:col-span-2">
+                  <div className="text-xs uppercase tracking-widest text-muted-foreground mb-1">Recurring Motif</div>
+                  <div className="text-sm font-semibold">{videoCreativeDirection.recurringMotif}</div>
+                </div>
+                <div className="rounded-lg border bg-muted/30 p-4 md:col-span-2">
+                  <div className="text-xs uppercase tracking-widest text-muted-foreground mb-1">Camera Language</div>
+                  <div className="text-sm font-semibold">{videoCreativeDirection.cameraLanguage}</div>
+                </div>
+              </>
+            )}
+            {output.videoRender && (
+              <>
+                <div className="rounded-lg border bg-muted/30 p-4 md:col-span-2">
+                  <div className="text-xs uppercase tracking-widest text-muted-foreground mb-1">Render Provider</div>
+                  <div className="text-sm font-semibold capitalize">{output.videoRender.provider}</div>
+                  <div className="text-xs text-muted-foreground mt-1">{output.videoRender.model} • {output.videoRender.resolution}</div>
+                </div>
+                <div className="rounded-lg border bg-muted/30 p-4 md:col-span-2">
+                  <div className="text-xs uppercase tracking-widest text-muted-foreground mb-1">Render Status</div>
+                  <div className="text-sm font-semibold capitalize">{output.videoRender.status}</div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    {output.videoRender.mode === 'extended-sequence' ? 'Extended multi-scene render chain' : 'Single text-to-video render'}
+                    {output.videoRender.note ? ` • ${output.videoRender.note}` : ''}
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         )}
 
@@ -307,7 +459,7 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
                         <head>
                           <title>${docTitle}</title>
                           <style>
-                            body { font-family: Inter, ui-sans-serif, system-ui, sans-serif; background: #f8f8fb; color: #1f2937; max-width: 920px; margin: 0 auto; padding: 48px 24px 80px; line-height: 1.7; }
+                            body { font-family: "Space Grotesk", ui-sans-serif, system-ui, sans-serif; background: #fbf7f2; color: #1f2937; max-width: 920px; margin: 0 auto; padding: 48px 24px 80px; line-height: 1.7; }
                             h1 { font-size: 2.25rem; line-height: 1.15; margin: 0 0 1.25rem; font-weight: 800; color: #111827; }
                             h2 { font-size: 1.5rem; line-height: 1.25; margin: 2.25rem 0 0.85rem; font-weight: 700; color: #111827; }
                             h3 { font-size: 1.125rem; line-height: 1.35; margin: 1.6rem 0 0.65rem; font-weight: 700; color: #1f2937; }
@@ -317,9 +469,9 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
                             hr { border: 0; border-top: 1px solid #e5e7eb; margin: 2rem 0; }
                             strong { font-weight: 700; color: #111827; }
                             em { font-style: italic; }
-                            code { background: #eef2ff; color: #4f46e5; padding: 0.1rem 0.35rem; border-radius: 0.35rem; font-size: 0.92em; }
-                            blockquote { margin: 1.25rem 0; padding: 0.25rem 0 0.25rem 1rem; border-left: 4px solid #8b5cf6; background: rgba(139, 92, 246, 0.05); }
-                            .doc-shell { background: #ffffff; border: 1px solid #e5e7eb; border-radius: 20px; box-shadow: 0 20px 60px rgba(15, 23, 42, 0.08); padding: 32px 36px; }
+                            code { background: #fff0e6; color: #c2410c; padding: 0.1rem 0.35rem; border-radius: 0.35rem; font-size: 0.92em; }
+                            blockquote { margin: 1.25rem 0; padding: 0.25rem 0 0.25rem 1rem; border-left: 4px solid #0d9488; background: rgba(13, 148, 136, 0.05); }
+                            .doc-shell { background: #ffffff; border: 1px solid #ece5dc; border-radius: 28px; box-shadow: 0 20px 60px rgba(15, 23, 42, 0.08); padding: 32px 36px; }
                           </style>
                         </head>
                         <body>
@@ -338,7 +490,7 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
                 View Full Document
               </Button>
             </div>
-            <div className="bg-background rounded-xl border p-6 max-h-[420px] overflow-y-auto shadow-inner
+            <div className="max-h-[420px] overflow-y-auto rounded-[26px] border border-[#0b6b6f]/12 bg-[#fcffff] p-6 shadow-inner
               [&_h1]:text-3xl [&_h1]:font-bold [&_h1]:tracking-tight [&_h1]:text-foreground [&_h1]:mb-5 [&_h1]:mt-0
               [&_h2]:text-2xl [&_h2]:font-bold [&_h2]:text-foreground [&_h2]:mt-8 [&_h2]:mb-3
               [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:text-foreground [&_h3]:mt-6 [&_h3]:mb-2
@@ -384,7 +536,7 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
               </div>
             </div>
 
-            <div className="w-full bg-background rounded-2xl overflow-hidden border shadow-inner mt-4">
+            <div className="mt-4 w-full overflow-hidden rounded-[26px] border border-[#0b6b6f]/12 bg-white shadow-inner">
                {/* Long-form infographic preview */}
                <iframe 
                  srcDoc={output.content}
@@ -402,10 +554,16 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
             <div>
               <h3 className="font-semibold text-lg flex items-center gap-2">
                 <MessageSquare className="w-5 h-5 text-primary" />
-                Scene {currentVideoScene.sceneNumber}: {currentVideoScene.visualDescription}
+                Scene {currentVideoScene.sceneNumber}: {currentVideoScene.sceneTitle || currentVideoScene.visualDescription}
               </h3>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <div className="text-sm font-medium text-muted-foreground">Visual Direction:</div>
+                <div className="bg-muted/50 rounded-lg p-3">
+                  <p className="text-sm">{currentVideoScene.visualDescription}</p>
+                </div>
+              </div>
               <div className="space-y-2">
                 <div className="text-sm font-medium text-muted-foreground">On-Screen Text:</div>
                 <div className="bg-muted/50 rounded-lg p-3">
@@ -419,8 +577,38 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
                 </div>
               </div>
             </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <div className="text-sm font-medium text-muted-foreground">Shot Type:</div>
+                <div className="bg-muted/50 rounded-lg p-3">
+                  <p className="text-sm">{currentVideoScene.shotType || 'Cinematic coverage'}</p>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <div className="text-sm font-medium text-muted-foreground">Motion Cue:</div>
+                <div className="bg-muted/50 rounded-lg p-3">
+                  <p className="text-sm">{currentVideoScene.motionCue || 'Subtle editorial motion'}</p>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <div className="text-sm font-medium text-muted-foreground">Continuity Anchor:</div>
+                <div className="bg-muted/50 rounded-lg p-3">
+                  <p className="text-sm">{currentVideoScene.continuityAnchor || videoCreativeDirection?.recurringMotif || 'Maintain scene continuity'}</p>
+                </div>
+              </div>
+            </div>
+            {currentVideoScene.editNote && (
+              <div className="space-y-2">
+                <div className="text-sm font-medium text-muted-foreground">Editor Note:</div>
+                <div className="bg-muted/50 rounded-lg p-3">
+                  <p className="text-sm">{currentVideoScene.editNote}</p>
+                </div>
+              </div>
+            )}
             <div className="flex items-center gap-4 text-sm text-muted-foreground">
+              {currentVideoScene.beatRole && <span>🎯 Beat: {currentVideoScene.beatRole}</span>}
               <span>⏱️ Duration: {currentVideoScene.duration}s</span>
+              {currentVideoScene.transition && <span>↘️ Transition: {currentVideoScene.transition}</span>}
               <span>🎬 Scene {currentVideoScene.sceneNumber} of {output.videoScenes!.length}</span>
             </div>
           </div>
@@ -453,10 +641,10 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
                     <img 
                       src={scene.imageUrl} 
                       alt={`Scene ${scene.sceneNumber}`}
-                      className="w-full aspect-video object-cover"
+                      className={`w-full ${videoAspectClass} object-cover`}
                     />
                     <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-white text-xs p-1 text-center">
-                      Scene {scene.sceneNumber} • {scene.duration}s
+                      Scene {scene.sceneNumber} • {scene.duration}s{scene.beatRole ? ` • ${scene.beatRole}` : ''}
                     </div>
                   </div>
                 </button>
@@ -490,27 +678,56 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
       </Card>
 
       {/* Sources Section */}
-      {output.sources && output.sources.length > 0 && (
-        <Card className="p-6 bg-card/60 backdrop-blur-sm border shadow-md">
+      {visibleSources.length > 0 && (
+        <Card className="border border-[#0b6b6f]/12 bg-white/96 p-6 shadow-[0_18px_48px_rgba(8,54,58,0.06)] backdrop-blur-sm">
           <div className="space-y-4">
             <div>
-              <h3 className="text-lg font-semibold mb-1">Sources</h3>
+              <h3 className="mb-1 text-lg font-semibold text-[#0b6b6f]">Sources</h3>
               <p className="text-sm text-muted-foreground">
-                Content enhanced with {output.sources.length} {output.sources.length === 1 ? 'source' : 'sources'}
+                {hasApprovedSources
+                  ? `Content enhanced with ${visibleSources.length} ${visibleSources.length === 1 ? 'source' : 'sources'}`
+                  : `Google search captured ${visibleSources.length} screened ${visibleSources.length === 1 ? 'source candidate' : 'source candidates'}, but none met the approval threshold for source-backed generation`}
               </p>
             </div>
             {output.sourceGovernance && (
-              <div className="rounded-xl border bg-background/60 p-4 space-y-3">
+              <div className="rounded-[22px] border border-[#0b6b6f]/10 bg-[#f9ffff] p-4 space-y-3">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="px-2.5 py-1 rounded-full text-xs font-medium border bg-primary/10 text-primary border-primary/20">
-                    {output.sourceGovernance.communicationFormat}
+                    <span className="rounded-full border border-[#0b6b6f]/16 bg-[#eff8f8] px-2.5 py-1 text-xs font-medium text-[#0b6b6f]">
+                      {output.sourceGovernance.communicationFormat}
+                    </span>
+                  <span className="rounded-full border border-[#0b6b6f]/12 bg-white px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                    {output.sourceGovernance.audienceLabel}
                   </span>
-                  <span className="px-2.5 py-1 rounded-full text-xs font-medium border bg-background text-muted-foreground">
+                  <span className="rounded-full border border-[#0b6b6f]/12 bg-white px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                    {output.sourceGovernance.communicationIntentLabel}
+                  </span>
+                  <span className="rounded-full border border-[#0b6b6f]/12 bg-white px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                    {output.sourceGovernance.namespaceLabel}
+                  </span>
+                  <span className="rounded-full border border-[#0b6b6f]/12 bg-white px-2.5 py-1 text-xs font-medium text-muted-foreground">
                     {output.sourceGovernance.evidenceUseCaseLabel}
+                  </span>
+                  <span className="rounded-full border border-[#0b6b6f]/12 bg-white px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                    {output.sourceGovernance.marketLabel}
                   </span>
                 </div>
                 <p className="text-sm text-muted-foreground">
+                  <span className="font-medium text-foreground">Market authority:</span> {output.sourceGovernance.marketAuthority}
+                </p>
+                <p className="text-sm text-muted-foreground">
                   <span className="font-medium text-foreground">Minimum standard:</span> {output.sourceGovernance.minimumSourceStandard}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">Captured / approved:</span> {output.sourceGovernance.screenedSourceCount ?? visibleSources.length} screened · {output.sourceGovernance.approvedSourceCount ?? (hasApprovedSources ? visibleSources.length : 0)} approved
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">Controlling references:</span> {output.sourceGovernance.controllingReferences.slice(0, 3).join(' · ')}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">Preferred source types:</span> {output.sourceGovernance.preferredSourceTypes.slice(0, 4).join(' · ')}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">Format requirements:</span> {output.sourceGovernance.formatRequirements.slice(0, 2).join(' · ')}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   <span className="font-medium text-foreground">Non-negotiables:</span> {output.sourceGovernance.nonNegotiables.slice(0, 2).join(' · ')}
@@ -518,13 +735,20 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
                 <p className="text-xs text-muted-foreground">
                   <span className="font-medium text-foreground">Common failure risks:</span> {output.sourceGovernance.commonFailures.slice(0, 2).join(' · ')}
                 </p>
+                {output.sourceGovernance.hardLockReasons && output.sourceGovernance.hardLockReasons.length > 0 && (
+                  <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
+                    <p className="text-xs text-amber-700">
+                      <span className="font-medium">Source locks:</span> {output.sourceGovernance.hardLockReasons.join(' · ')}
+                    </p>
+                  </div>
+                )}
               </div>
             )}
             <div className="grid gap-3">
-              {output.sources.map((source, index) => (
+              {visibleSources.map((source, index) => (
                 <div
                   key={`${source.domain}-${index}`}
-                  className="flex items-start justify-between p-3 rounded-lg bg-background/50 hover:bg-background/80 transition-colors border border-border/50"
+                    className="flex items-start justify-between rounded-[18px] border border-[#0b6b6f]/10 bg-white p-3 transition-colors hover:bg-[#f9ffff]"
                 >
                   <div className="flex-1 min-w-0">
                     <div className="font-medium text-sm truncate">{source.title}</div>
@@ -540,12 +764,12 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
                         </span>
                       )}
                       {source.tier && (
-                        <span className="px-2 py-0.5 rounded-full border text-[11px] font-medium bg-background text-muted-foreground">
+                        <span className="rounded-full border border-[#0b6b6f]/10 bg-white px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
                           {source.tier}
                         </span>
                       )}
                       {source.sourceType && (
-                        <span className="px-2 py-0.5 rounded-full border text-[11px] font-medium bg-background text-muted-foreground">
+                        <span className="rounded-full border border-[#0b6b6f]/10 bg-white px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
                           {source.sourceType}
                         </span>
                       )}
@@ -571,34 +795,36 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
               ))}
             </div>
             <p className="text-xs text-muted-foreground italic pt-2 border-t border-border/50">
-              Content generated from {output.sources.some(s => s.type === 'web') ? 'real-time web data and' : ''} general knowledge; always verify critical information with additional research.
+              {hasApprovedSources
+                ? `Content generated from ${visibleSources.some(s => s.type === 'web') ? 'real-time web data and ' : ''}screened evidence; always verify critical information with additional research.`
+                : 'These sources were captured from search and screened for fit, but the generated draft still fell back to placeholders because no candidate cleared the approval threshold.'}
             </p>
           </div>
         </Card>
       )}
 
       {/* Fallback message if no sources */}
-      {(!output.sources || output.sources.length === 0) && (
-        <Card className="p-6 bg-card/60 backdrop-blur-sm border shadow-md">
+      {visibleSources.length === 0 && (
+        <Card className="border border-[#0b6b6f]/12 bg-white/96 p-6 shadow-[0_18px_48px_rgba(8,54,58,0.06)] backdrop-blur-sm">
           <div className="text-center space-y-3">
-            <h3 className="text-lg font-semibold">Sources</h3>
+            <h3 className="text-lg font-semibold text-[#0b6b6f]">Sources</h3>
             {output.sourceGovernance && (
               <p className="text-sm text-muted-foreground">
-                Evidence profile: <span className="font-medium text-foreground">{output.sourceGovernance.communicationFormat}</span> · {output.sourceGovernance.evidenceUseCaseLabel}
+                Evidence profile: <span className="font-medium text-foreground">{output.sourceGovernance.communicationFormat}</span> · {output.sourceGovernance.audienceLabel} · {output.sourceGovernance.marketLabel}
               </p>
             )}
             <p className="text-sm text-muted-foreground italic">
-              Content generated from general knowledge; no specific sources retrieved.
+              No screened sources were captured from search for this run.
             </p>
           </div>
         </Card>
       )}
 
       {output.operationalGuardrails && (
-        <Card className="p-6 bg-card/60 backdrop-blur-sm border shadow-md">
+        <Card className="border border-[#0b6b6f]/12 bg-white/96 p-6 shadow-[0_18px_48px_rgba(8,54,58,0.06)] backdrop-blur-sm">
           <div className="space-y-4">
             <div>
-              <h3 className="text-lg font-semibold mb-1">Operational Guardrails</h3>
+              <h3 className="mb-1 text-lg font-semibold text-[#0b6b6f]">Operational Guardrails</h3>
               <p className="text-sm text-muted-foreground">
                 Market: {output.operationalGuardrails.market === 'dubai' ? 'Dubai / UAE' : output.operationalGuardrails.market === 'us' ? 'United States' : output.operationalGuardrails.market === 'uk' ? 'United Kingdom' : output.operationalGuardrails.market.charAt(0).toUpperCase() + output.operationalGuardrails.market.slice(1)} · {output.operationalGuardrails.summary}
               </p>
@@ -643,7 +869,7 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
             )}
 
             {output.operationalGuardrails.readability && (
-              <div className="rounded-lg border bg-background/50 p-4">
+              <div className="rounded-[20px] border border-[#0b6b6f]/10 bg-[#f7fbfb] p-4">
                 <p className="text-sm font-medium">Readability</p>
                 <p className="text-sm text-muted-foreground mt-1">
                   {output.operationalGuardrails.readability.scoreName} grade:
@@ -661,7 +887,7 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
             )}
 
             {output.operationalGuardrails.evidenceMap && output.operationalGuardrails.evidenceMap.length > 0 && (
-              <div className="rounded-lg border bg-background/50 p-4 space-y-3">
+              <div className="rounded-[20px] border border-[#0b6b6f]/10 bg-[#f7fbfb] p-4 space-y-3">
                 <p className="text-sm font-medium">Evidence Map</p>
                 <div className="grid gap-2">
                   {output.operationalGuardrails.evidenceMap.slice(0, 8).map((entry) => (
@@ -707,12 +933,12 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
 
       {/* Feedback and Edit Chat Tabs */}
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'feedback' | 'chat')} className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="chat" className="gap-2">
+        <TabsList className="grid w-full grid-cols-2 rounded-full border border-[#0b6b6f]/12 bg-white/94 p-1 shadow-[0_8px_26px_rgba(8,54,58,0.05)]">
+          <TabsTrigger value="chat" className="gap-2 rounded-full">
             <MessageSquare className="w-4 h-4" />
             Edit Assistant
           </TabsTrigger>
-          <TabsTrigger value="feedback" className="gap-2">
+          <TabsTrigger value="feedback" className="gap-2 rounded-full">
             <ThumbsUp className="w-4 h-4" />
             Quick Feedback
           </TabsTrigger>
@@ -741,7 +967,7 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
 
       {/* Change request or confirm final actions */}
       {!showChangeRequest && (
-        <div className="bg-accent/20 border border-accent rounded-lg p-4 space-y-3">
+        <div className="space-y-3 rounded-[24px] border border-[#0b6b6f]/14 bg-[#f6fbfb] p-5">
           <div className="text-center">
             <p className="font-semibold">How does this look?</p>
             <p className="text-sm text-muted-foreground mt-1">
@@ -866,12 +1092,12 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
         )}
         {isPresentation && (
           <Button
-            onClick={() => {
+            onClick={async () => {
               analyticsService.trackDownloadClicked(output.contentType);
-              downloadPresentationOutline(output);
+              await downloadPresentationDeck(output);
               toast({
-                title: 'Slide Outline Downloaded',
-                description: 'Your PowerPoint-ready outline (.rtf) is ready.'
+                title: 'PowerPoint Downloaded',
+                description: 'Your .pptx deck is ready.'
               });
             }}
             size="lg"
@@ -879,7 +1105,24 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
             className="flex-1 text-base font-semibold"
           >
             <FileText className="w-5 h-5 mr-2" />
-            Slide Outline
+            PowerPoint
+          </Button>
+        )}
+        {hasRenderedVideo && (
+          <Button
+            onClick={() => {
+              analyticsService.trackDownloadClicked(output.contentType);
+              window.open(renderedVideoUrl, '_blank', 'noopener,noreferrer');
+              toast({
+                title: 'Rendered Video Opened',
+                description: 'Your rendered MP4 is opening in a new tab.'
+              });
+            }}
+            size="lg"
+            className="flex-1 text-base font-semibold"
+          >
+            <Video className="w-5 h-5 mr-2" />
+            MP4
           </Button>
         )}
         {hasVideoScenes && (
@@ -940,7 +1183,7 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
             Audio
           </Button>
         )}
-        {(output.previewUrl || (output.downloadUrl && output.downloadUrl !== '#')) && (
+        {primaryVisualUrl && (
           <Button
             onClick={() => {
               analyticsService.trackDownloadClicked(output.contentType);
@@ -955,7 +1198,15 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
             className="flex-1 text-base font-semibold"
           >
             <Image className="w-5 h-5 mr-2" />
-            {isTextDocument || isHtmlDocument ? 'Cover / Key Visual' : hasCarousel ? 'Lead Slide' : hasVideoScenes ? 'Key Frame' : 'Primary Asset'}
+            {hasRenderedVideo
+              ? 'Thumbnail'
+              : isTextDocument || isHtmlDocument
+                ? 'Cover / Key Visual'
+                : hasCarousel
+                  ? 'Lead Slide'
+                  : hasVideoScenes
+                    ? 'Key Frame'
+                    : 'Primary Asset'}
           </Button>
         )}
         <Button 

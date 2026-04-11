@@ -45,7 +45,7 @@ export function FeedbackCard({ contentType, onFeedbackSubmitted }: FeedbackCardP
         <CardContent className="pt-6">
           <div className="text-center space-y-2">
             <p className="text-sm font-medium text-primary">Thanks for your feedback!</p>
-            <p className="text-xs text-muted-foreground">We use your input to improve DoneandDone</p>
+            <p className="text-xs text-muted-foreground">We use your input to improve Vera</p>
           </div>
         </CardContent>
       </Card>
@@ -56,7 +56,7 @@ export function FeedbackCard({ contentType, onFeedbackSubmitted }: FeedbackCardP
     <Card>
       <CardHeader>
         <CardTitle className="text-base">Was this helpful?</CardTitle>
-        <CardDescription>Your feedback helps us improve DoneandDone</CardDescription>
+        <CardDescription>Your feedback helps us improve Vera</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex gap-3">

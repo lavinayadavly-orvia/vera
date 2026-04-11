@@ -55,6 +55,8 @@ function extractBlockCandidates(content: string): string[] {
     .filter((line) => !line.startsWith('#'))
     .map((line) => line.replace(/^[\-\*\d.\s]+/, '').trim())
     .filter((line) => line.length >= 18)
+    .filter((line) => !/\[SOURCE NEEDED:/i.test(line))
+    .filter((line) => !/\bSOURCE NEEDED\b/i.test(line))
     .filter((line) => {
       if (unique.has(line)) return false;
       unique.add(line);
@@ -69,6 +71,15 @@ export function buildModularContentLibrary(params: {
   dossier?: EvidenceDossier;
   rulesEngine: RulesEngineReport;
 }): ModularContentLibrary {
+  if (!params.dossier || params.dossier.sourceDocuments.length === 0) {
+    return {
+      mode: 'block-library',
+      blocks: [],
+      reusableApprovedCount: 0,
+      blockedCount: 0,
+    };
+  }
+
   const blockTexts = extractBlockCandidates(params.output.textContent || params.output.content);
 
   const blocks: ApprovedContentBlock[] = blockTexts.map((text, index) => {
@@ -81,6 +92,9 @@ export function buildModularContentLibrary(params: {
       .sort((left, right) => right.score - left.score)
       .slice(0, 2)
       .map((entry) => entry.claim);
+    const evidenceLinkedClaims = matchedClaims.filter(
+      (claim) => claim.status === 'mapped' || claim.status === 'locator-missing',
+    );
 
     const matchedFinding = params.rulesEngine.findings.find((finding) =>
       (finding.matchedTerms || []).some((term) => new RegExp(`\\b${term}\\b`, 'i').test(text)),
@@ -89,11 +103,11 @@ export function buildModularContentLibrary(params: {
     let approvalStatus: ApprovedContentBlock['approvalStatus'] = 'needs-review';
     if (matchedFinding?.severity === 'block') {
       approvalStatus = 'blocked';
-    } else if (matchedClaims.length > 0 && matchedClaims.every((claim) => claim.status === 'mapped')) {
+    } else if (evidenceLinkedClaims.length > 0 && evidenceLinkedClaims.every((claim) => claim.status === 'mapped')) {
       approvalStatus = 'approved';
     } else if (matchedClaims.some((claim) => claim.status === 'source-needed' || claim.status === 'unmapped')) {
       approvalStatus = 'needs-review';
-    } else if (matchedClaims.length === 0 && params.rulesEngine.status === 'block') {
+    } else if (evidenceLinkedClaims.length === 0 && params.rulesEngine.status === 'block') {
       approvalStatus = 'blocked';
     }
 
@@ -101,13 +115,13 @@ export function buildModularContentLibrary(params: {
       blockId: `BLK-${String(index + 1).padStart(3, '0')}`,
       kind: inferBlockKind(text, index),
       text,
-      sourceClaimIds: matchedClaims.map((claim) => claim.claimId),
+      sourceClaimIds: evidenceLinkedClaims.map((claim) => claim.claimId),
       approvalStatus,
       reusableIn: reusableFormatsFor(inferBlockKind(text, index)),
       notes: [
-        matchedClaims.length > 0
-          ? `${matchedClaims.length} linked evidence sentence(s)`
-          : 'No linked evidence sentence yet',
+        evidenceLinkedClaims.length > 0
+          ? `${evidenceLinkedClaims.length} linked source-backed sentence(s)`
+          : 'No linked source-backed sentence yet',
         matchedFinding ? matchedFinding.title : 'No blocking rule match',
       ],
     };

@@ -39,12 +39,20 @@ export async function generateObject({ prompt, schema, model = 'gpt-4o' }: { pro
 }
 
 // Helper: generateImage (returns native Blob URL via DALL-E 3)
-export async function generateImage({ prompt, n = 1 }: { prompt: string; n?: number }) {
+export async function generateImage({
+  prompt,
+  n = 1,
+  size = '1024x1024',
+}: {
+  prompt: string;
+  n?: number;
+  size?: '1024x1024' | '1792x1024' | '1024x1792';
+}) {
   const response = await openai.images.generate({
     model: 'dall-e-3',
     prompt,
     n,
-    size: '1024x1024',
+    size,
     response_format: 'b64_json', // prevent 2-hour Azure SAS expiration
   });
   

@@ -1,0 +1,7 @@
+<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img">
+  <title>Vera</title>
+  <rect width="64" height="64" rx="16" fill="#F5FCFB" />
+  <rect x="0.5" y="0.5" width="63" height="63" rx="15.5" fill="none" stroke="#B7D5D2" />
+  <path d="M19 14L32 48L45 14" fill="none" stroke="#0D9488" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round" />
+  <circle cx="32" cy="49" r="4.5" fill="#0D9488" />
+</svg>

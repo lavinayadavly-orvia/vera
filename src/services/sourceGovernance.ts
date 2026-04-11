@@ -1,6 +1,10 @@
 import type {
+  ApiNamespace,
   ContentType,
   ContentSource,
+  Market,
+  SourceAudienceSegment,
+  SourceCommunicationIntent,
   SourceEvidenceUseCase,
   SourceGovernanceSummary,
   SourceScreeningCheck,
@@ -19,6 +23,8 @@ interface SourceRequestProfile {
   prompt: string;
   contentType: ContentType;
   targetAudience: string;
+  market: Market;
+  apiNamespace: ApiNamespace;
 }
 
 interface SourceCategoryRule {
@@ -39,11 +45,40 @@ interface SourceCategoryRule {
 interface CommunicationProfile {
   id: string;
   label: string;
+  intent: SourceCommunicationIntent;
   evidenceUseCase: SourceEvidenceUseCase;
   minimumSourceStandard: string;
+  sourceSearchHints: string[];
+  preferredCategoryIds?: string[];
   nonNegotiables: string[];
   regulatoryNotes: string[];
   commonFailures: string[];
+}
+
+interface FormatPolicy {
+  label: string;
+  formatRequirements: string[];
+  sourceSearchHints: string[];
+}
+
+interface MarketPolicy {
+  label: string;
+  authority: string;
+  controllingReferences: string[];
+  regulatoryNotes: string[];
+  sourceSearchHints: string[];
+  preferredCategoryIds?: string[];
+}
+
+interface ResolvedSourcePolicy {
+  audienceSegment: SourceAudienceSegment;
+  audienceLabel: string;
+  communicationIntent: SourceCommunicationIntent;
+  communicationIntentLabel: string;
+  profile: CommunicationProfile;
+  formatPolicy: FormatPolicy;
+  marketPolicy: MarketPolicy;
+  namespaceLabel: string;
 }
 
 const USE_CASE_LABELS: Record<SourceEvidenceUseCase, string> = {
@@ -62,6 +97,29 @@ const SUITABILITY_LABELS: Record<SourceSuitability, string> = {
   S: 'Supporting',
   C: 'Contextual',
   X: 'Excluded'
+};
+
+const AUDIENCE_LABELS: Record<SourceAudienceSegment, string> = {
+  patient: 'Patient',
+  hcp: 'HCP / clinician',
+  kol: 'KOL / researcher',
+  public: 'General public',
+  payer: 'Payer / policy'
+};
+
+const COMMUNICATION_INTENT_LABELS: Record<SourceCommunicationIntent, string> = {
+  awareness: 'Disease awareness',
+  launch: 'Product launch',
+  medical: 'Medical / scientific exchange',
+  promotional: 'Promotional',
+  cme: 'CME / education',
+  policy: 'Policy / market access',
+  education: 'Patient education'
+};
+
+const NAMESPACE_LABELS: Record<ApiNamespace, string> = {
+  medical: 'Medical Affairs / scientific exchange',
+  marketing: 'Commercial / promotional'
 };
 
 const STOP_WORDS = new Set([
@@ -424,12 +482,170 @@ const SOURCE_CATEGORY_RULES: SourceCategoryRule[] = [
   }
 ];
 
+const FORMAT_POLICIES: Record<ContentType, FormatPolicy> = {
+  'white-paper': {
+    label: 'White paper',
+    formatRequirements: [
+      'Full methodology, limitations, and reference structure are expected.',
+      'Executive summary and sectioned argument flow should be source-backed.',
+      'Use dense evidence packaging, not isolated promotional claims.'
+    ],
+    sourceSearchHints: ['systematic review', 'guideline', 'methodology', 'primary publication']
+  },
+  infographic: {
+    label: 'Infographic',
+    formatRequirements: [
+      'Limit to a few traceable statistics and short evidence-backed statements.',
+      'Every visible data point should map to a footnote-grade source.',
+      'Avoid paragraph-level copy; source quality matters more than source count.'
+    ],
+    sourceSearchHints: ['guideline summary', 'key statistics', 'public health facts']
+  },
+  video: {
+    label: 'Video / animation',
+    formatRequirements: [
+      'Narration-safe facts only; do not use evidence that needs heavy caveating to make sense.',
+      'One concept per scene with clean sourceable proof points.',
+      'Storyboard, on-screen text, and voiceover should all map to the same evidence frame.'
+    ],
+    sourceSearchHints: ['plain language', 'sourceable facts', 'brief']
+  },
+  presentation: {
+    label: 'Presentation / slides',
+    formatRequirements: [
+      'Slide-level evidence should be modular and reusable.',
+      'Each slide should have one evidentiary purpose and one source cluster.',
+      'Tables, study summaries, and guideline positions should remain distinguishable.'
+    ],
+    sourceSearchHints: ['slide-ready evidence', 'guideline', 'study summary']
+  },
+  'social-post': {
+    label: 'Social post',
+    formatRequirements: [
+      'Use one idea, one proof point, and one sourceable stat at most.',
+      'Patient/public social should prefer public-health or patient-safe sources.',
+      'Do not compress complex efficacy framing into social copy.'
+    ],
+    sourceSearchHints: ['single statistic', 'public health source', 'social-safe fact']
+  },
+  document: {
+    label: 'Document',
+    formatRequirements: [
+      'Sectioned copy should be sourced block by block.',
+      'Use guideline and review support for narrative sections, not isolated snippets.',
+      'Where evidence is thin, show structured placeholders instead of invented detail.'
+    ],
+    sourceSearchHints: ['guideline', 'review article', 'source-backed summary']
+  },
+  report: {
+    label: 'Report',
+    formatRequirements: [
+      'Comparative, epidemiology, HEOR, and policy inputs should stay separated.',
+      'Report conclusions should be anchored to current evidence, not journalism.',
+      'Local burden and market-fit sources should be visible when claims are market-specific.'
+    ],
+    sourceSearchHints: ['hta', 'heor', 'real-world evidence', 'epidemiology']
+  },
+  podcast: {
+    label: 'Podcast script',
+    formatRequirements: [
+      'Use explainable evidence that can survive spoken delivery without tables.',
+      'Avoid uncaveated numerical overload in audio-only formats.',
+      'Narrative flow should still preserve exact evidence boundaries.'
+    ],
+    sourceSearchHints: ['plain-language summary', 'expert guidance', 'narrative-safe evidence']
+  }
+};
+
+const MARKET_POLICIES: Record<Market, MarketPolicy> = {
+  global: {
+    label: 'Global / multi-market',
+    authority: 'Most restrictive label and review standard across the intended distribution set.',
+    controllingReferences: ['Claims grid across target labels / SmPCs', 'WHO or multinational guidance', 'Global burden sources'],
+    regulatoryNotes: [
+      'Design reusable claims to the most conservative market ceiling.',
+      'Global content should stay explicit about where local adaptation is required.'
+    ],
+    sourceSearchHints: ['global guideline', 'world health organization', 'multinational study', 'claims grid'],
+    preferredCategoryIds: ['clinical-practice-guidelines', 'systematic-reviews-meta-analyses', 'government-health-agencies-hcp-facing']
+  },
+  india: {
+    label: 'India',
+    authority: 'CDSCO-approved label plus India-specific epidemiology and society guidance.',
+    controllingReferences: ['CDSCO / approved prescribing information', 'ICMR / Indian epidemiology', 'Indian or adapted society guidelines'],
+    regulatoryNotes: [
+      'Prefer Indian prevalence, practice, or bridging data when the content makes India-specific claims.',
+      'Patient/public content should stay disease-awareness-safe unless the workflow explicitly supports branded local compliance.'
+    ],
+    sourceSearchHints: ['india guideline', 'cdsco label', 'icmr epidemiology', 'india trial'],
+    preferredCategoryIds: ['regulatory-label-prescribing-information', 'clinical-practice-guidelines', 'government-health-agencies-hcp-facing', 'burden-of-disease-heor-epidemiology-studies']
+  },
+  singapore: {
+    label: 'Singapore',
+    authority: 'HSA-governed local label and Singapore evidence re-validation practice.',
+    controllingReferences: ['HSA-approved information', 'Singapore clinical guidance', 'Local or regional epidemiology'],
+    regulatoryNotes: [
+      'References older than five years should be treated as re-validation candidates.',
+      'Where local data is unavailable, clearly signal imported evidence and why it is still relevant.'
+    ],
+    sourceSearchHints: ['singapore guideline', 'hsa label', 'singapore epidemiology'],
+    preferredCategoryIds: ['regulatory-label-prescribing-information', 'clinical-practice-guidelines', 'government-health-agencies-hcp-facing']
+  },
+  dubai: {
+    label: 'Dubai / UAE',
+    authority: 'Local label / health authority guidance with explicit localization and Arabic terminology review.',
+    controllingReferences: ['Local approved label or prescribing information', 'UAE / GCC guidance where available', 'Localization-reviewed patient-safe sources'],
+    regulatoryNotes: [
+      'Patient-facing content should preserve clinically correct terminology for localization review.',
+      'Prefer public-health and government-style sources when building public-facing content.'
+    ],
+    sourceSearchHints: ['uae guideline', 'dubai health authority', 'mohap', 'gcc healthcare'],
+    preferredCategoryIds: ['regulatory-label-prescribing-information', 'government-health-agencies-patient-facing', 'clinical-practice-guidelines']
+  },
+  germany: {
+    label: 'Germany',
+    authority: 'German / EU SmPC position plus G-BA or IQWiG access and value framing where relevant.',
+    controllingReferences: ['German or EU SmPC', 'G-BA / IQWiG / HTA materials', 'German society guidance'],
+    regulatoryNotes: [
+      'Comparative and value-oriented claims should lean on HTA-compatible evidence sets.',
+      'Do not treat FDA label language as the controlling authority for Germany.'
+    ],
+    sourceSearchHints: ['germany smpc', 'g-ba', 'iqwig', 'german guideline'],
+    preferredCategoryIds: ['regulatory-label-prescribing-information', 'hta-body-assessments', 'clinical-practice-guidelines']
+  },
+  us: {
+    label: 'United States',
+    authority: 'FDA-approved prescribing information plus US guidance and public-health authorities.',
+    controllingReferences: ['FDA prescribing information', 'US professional society guidelines', 'CDC / NIH / SEER / NHANES where relevant'],
+    regulatoryNotes: [
+      'US promotional framing should always resolve back to FDA-approved labeling.',
+      'Fair-balance-sensitive outputs should avoid unsupported shorthand claims.'
+    ],
+    sourceSearchHints: ['fda prescribing information', 'us guideline', 'cdc clinical guidance', 'nih evidence'],
+    preferredCategoryIds: ['regulatory-label-prescribing-information', 'clinical-practice-guidelines', 'government-health-agencies-hcp-facing']
+  },
+  uk: {
+    label: 'United Kingdom',
+    authority: 'UK SmPC plus NICE, NHS, and UK-coded promotional review expectations.',
+    controllingReferences: ['UK SmPC', 'NICE guidance / HTA', 'NHS or ONS epidemiology where relevant'],
+    regulatoryNotes: [
+      'Use UK-specific reimbursement and practice references where NHS positioning is implied.',
+      'Do not assume EMA wording and UK wording are identical.'
+    ],
+    sourceSearchHints: ['uk smpc', 'nice guideline', 'nhs evidence', 'uk epidemiology'],
+    preferredCategoryIds: ['regulatory-label-prescribing-information', 'clinical-practice-guidelines', 'hta-body-assessments', 'government-health-agencies-patient-facing']
+  }
+};
+
 const COMMUNICATION_PROFILES: CommunicationProfile[] = [
   {
     id: 'promotional-detail-aid',
     label: 'Promotional detail aid',
+    intent: 'promotional',
     evidenceUseCase: 'hcp-detail-aid',
     minimumSourceStandard: 'Tier 1 for efficacy and safety claims, plus Tier 2 label/guideline support for indication and dosing.',
+    sourceSearchHints: ['prescribing information', 'phase 3 trial', 'systematic review', 'guideline'],
+    preferredCategoryIds: ['regulatory-label-prescribing-information', 'peer-reviewed-rcts-phase-iii-trials', 'systematic-reviews-meta-analyses', 'clinical-practice-guidelines'],
     nonNegotiables: [
       'Current approved label only for indication, dosing, and safety framing.',
       'Primary claims must map to RCT or meta-analysis evidence.',
@@ -449,8 +665,11 @@ const COMMUNICATION_PROFILES: CommunicationProfile[] = [
   {
     id: 'congress-conference-materials',
     label: 'Congress & conference materials',
+    intent: 'medical',
     evidenceUseCase: 'hcp-awareness',
     minimumSourceStandard: 'Tier 1 for presented data, Tier 2 for clinical context, abstracts contextual only unless full paper is unavailable.',
+    sourceSearchHints: ['congress abstract', 'peer-reviewed publication', 'clinical context', 'data cut-off'],
+    preferredCategoryIds: ['peer-reviewed-rcts-phase-iii-trials', 'systematic-reviews-meta-analyses', 'clinical-practice-guidelines', 'conference-abstracts-posters'],
     nonNegotiables: [
       'Data cut-off must be clear.',
       'Post-hoc analyses must stay labelled as exploratory.',
@@ -470,8 +689,11 @@ const COMMUNICATION_PROFILES: CommunicationProfile[] = [
   {
     id: 'cme-cpd',
     label: 'CME / CPD',
+    intent: 'cme',
     evidenceUseCase: 'hcp-training-cme',
     minimumSourceStandard: 'Tier 1 for all clinical teaching, Tier 2 for guideline alignment.',
+    sourceSearchHints: ['guideline update', 'systematic review', 'evidence grading', 'teaching'],
+    preferredCategoryIds: ['systematic-reviews-meta-analyses', 'peer-reviewed-rcts-phase-iii-trials', 'clinical-practice-guidelines'],
     nonNegotiables: [
       'Evidence grading must be transparent.',
       'Learning objectives and evidence currency must align.',
@@ -491,8 +713,11 @@ const COMMUNICATION_PROFILES: CommunicationProfile[] = [
   {
     id: 'medical-affairs-scientific-exchange',
     label: 'Medical Affairs / MSL scientific exchange',
-    evidenceUseCase: 'hcp-detail-aid',
+    intent: 'medical',
+    evidenceUseCase: 'hcp-awareness',
     minimumSourceStandard: 'Tier 1 primary evidence preferred; lower levels allowed only when clearly graded and context-labelled.',
+    sourceSearchHints: ['primary evidence', 'clinical trial protocol', 'safety update', 'scientific exchange'],
+    preferredCategoryIds: ['peer-reviewed-rcts-phase-iii-trials', 'systematic-reviews-meta-analyses', 'real-world-evidence-disease-registries', 'clinical-trial-registries-protocols'],
     nonNegotiables: [
       'On-label and off-label evidence must be clearly separated.',
       'Negative and safety findings cannot be omitted.',
@@ -512,8 +737,11 @@ const COMMUNICATION_PROFILES: CommunicationProfile[] = [
   {
     id: 'journal-advertising-sponsored-supplements',
     label: 'Journal advertising & sponsored supplements',
+    intent: 'promotional',
     evidenceUseCase: 'hcp-awareness',
     minimumSourceStandard: 'Tier 1 for clinical claims, with editorial independence clearly declared.',
+    sourceSearchHints: ['clinical publication', 'head-to-head evidence', 'editorial independence', 'journal supplement'],
+    preferredCategoryIds: ['peer-reviewed-rcts-phase-iii-trials', 'systematic-reviews-meta-analyses', 'clinical-practice-guidelines'],
     nonNegotiables: [
       'Named authors and COI declarations must be present.',
       'Supplement review process must be explicit.',
@@ -533,8 +761,11 @@ const COMMUNICATION_PROFILES: CommunicationProfile[] = [
   {
     id: 'disease-awareness-campaign',
     label: 'Disease awareness campaign',
+    intent: 'awareness',
     evidenceUseCase: 'patient-awareness',
     minimumSourceStandard: 'Tier 3 minimum for factual disease awareness, with Tier 2 only for prevalence or burden claims.',
+    sourceSearchHints: ['who facts', 'government patient information', 'disease burden statistics', 'prevention guidance'],
+    preferredCategoryIds: ['government-health-agencies-patient-facing', 'government-health-agencies-hcp-facing', 'disease-nonprofits-patient-facing', 'burden-of-disease-heor-epidemiology-studies'],
     nonNegotiables: [
       'Epidemiology should be within 3 years.',
       'Disease framing must stay unbranded.',
@@ -554,8 +785,11 @@ const COMMUNICATION_PROFILES: CommunicationProfile[] = [
   {
     id: 'patient-education-leaflet',
     label: 'Patient education leaflet / booklet / brochure',
+    intent: 'education',
     evidenceUseCase: 'patient-education',
     minimumSourceStandard: 'Tier 3 for disease and lifestyle information, Tier 2 for treatment context, Tier 4 accepted for validated self-management support.',
+    sourceSearchHints: ['patient guide', 'plain language', 'self-management', 'treatment guide'],
+    preferredCategoryIds: ['government-health-agencies-patient-facing', 'academic-medical-centre-public-content', 'disease-nonprofits-patient-facing', 'validated-health-literacy-frameworks'],
     nonNegotiables: [
       'Plain-language validation is required.',
       'Translations need back-translation validation.',
@@ -575,8 +809,11 @@ const COMMUNICATION_PROFILES: CommunicationProfile[] = [
   {
     id: 'patient-app-digital-health-tool',
     label: 'Patient app / digital health tool',
+    intent: 'education',
     evidenceUseCase: 'patient-education',
     minimumSourceStandard: 'Tier 3 minimum for static content; algorithmic recommendations require Tier 1 or Tier 2 support plus disclosed logic.',
+    sourceSearchHints: ['patient digital tool', 'self-management', 'algorithm basis', 'plain language'],
+    preferredCategoryIds: ['government-health-agencies-patient-facing', 'validated-health-literacy-frameworks', 'validated-patient-reported-outcome-instruments', 'disease-nonprofits-patient-facing'],
     nonNegotiables: [
       'Version control and review cadence must exist.',
       'Actual patient UX testing is required.',
@@ -596,8 +833,11 @@ const COMMUNICATION_PROFILES: CommunicationProfile[] = [
   {
     id: 'social-media-content',
     label: 'Social media content',
+    intent: 'awareness',
     evidenceUseCase: 'patient-digital-social',
     minimumSourceStandard: 'Tier 3 minimum for factual public claims; disease statistics should come from Tier 2 government or WHO sources.',
+    sourceSearchHints: ['public health statistic', 'social-safe fact', 'who fact sheet', 'government awareness'],
+    preferredCategoryIds: ['government-health-agencies-patient-facing', 'disease-nonprofits-patient-facing', 'validated-health-literacy-frameworks'],
     nonNegotiables: [
       'No patient-facing clinical efficacy claims.',
       'Public statistics should be less than 2 years old where possible.',
@@ -617,8 +857,11 @@ const COMMUNICATION_PROFILES: CommunicationProfile[] = [
   {
     id: 'patient-support-programme',
     label: 'Patient support programme materials',
+    intent: 'education',
     evidenceUseCase: 'patient-education',
     minimumSourceStandard: 'Tier 2 label for dosing and administration, Tier 3 for disease education, Tier 4 for peer support or lifestyle content.',
+    sourceSearchHints: ['prescribing information', 'patient support programme', 'administration guide', 'self-management'],
+    preferredCategoryIds: ['regulatory-label-prescribing-information', 'government-health-agencies-patient-facing', 'disease-nonprofits-patient-facing'],
     nonNegotiables: [
       'Product-specific content must match the current approved label.',
       'Clinical modules should be authored or reviewed by qualified HCPs.',
@@ -638,8 +881,11 @@ const COMMUNICATION_PROFILES: CommunicationProfile[] = [
   {
     id: 'press-release-media-statement',
     label: 'Press release / media statement',
+    intent: 'launch',
     evidenceUseCase: 'pr-media',
     minimumSourceStandard: 'Tier 1 for trial data and Tier 3 for burden framing; expert opinion only as attributed commentary.',
+    sourceSearchHints: ['trial results', 'public health statistics', 'media statement', 'investigator quote'],
+    preferredCategoryIds: ['peer-reviewed-rcts-phase-iii-trials', 'regulatory-safety-communications', 'government-health-agencies-hcp-facing', 'reputable-health-journalism'],
     nonNegotiables: [
       'Headline claims must match study findings.',
       'Absolute numbers should accompany relative measures.',
@@ -659,8 +905,11 @@ const COMMUNICATION_PROFILES: CommunicationProfile[] = [
   {
     id: 'policy-submission-hta-evidence-dossier',
     label: 'Policy submission / HTA evidence dossier',
+    intent: 'policy',
     evidenceUseCase: 'policy-hta-dossier',
     minimumSourceStandard: 'Tier 1 for clinical evidence, Tier 2 for guideline alignment, Tier 3 for epidemiology and burden, plus explicit RWE limitations.',
+    sourceSearchHints: ['hta assessment', 'cost effectiveness', 'budget impact', 'real-world evidence'],
+    preferredCategoryIds: ['hta-body-assessments', 'burden-of-disease-heor-epidemiology-studies', 'systematic-reviews-meta-analyses', 'real-world-evidence-disease-registries'],
     nonNegotiables: [
       'Selective evidence presentation is unacceptable.',
       'GRADE-equivalent evidence grading must be visible.',
@@ -715,52 +964,152 @@ function extractYear(text: string): number | null {
   return Math.max(...years.map((year) => Number(year)));
 }
 
-function inferIsHcpAudience(targetAudience: string, prompt: string): boolean {
-  const combined = `${targetAudience} ${prompt}`.toLowerCase();
-  return /\bhcp\b|\bhealthcare professional\b|\bclinician\b|\bphysician\b|\bprescriber\b|\bmsl\b|\bspecialist\b|\bmedical affairs\b/.test(combined);
+function findCommunicationProfile(profileId: string): CommunicationProfile {
+  return COMMUNICATION_PROFILES.find((profile) => profile.id === profileId)!
+    || COMMUNICATION_PROFILES[0];
 }
 
-function inferCommunicationProfile(request: SourceRequestProfile): CommunicationProfile {
+function findExplicitProfile(request: SourceRequestProfile): CommunicationProfile | null {
   const combined = `${request.prompt} ${request.targetAudience}`.toLowerCase();
 
   for (const entry of PROFILE_KEYWORDS) {
     if (entry.patterns.some((pattern) => pattern.test(combined))) {
-      return COMMUNICATION_PROFILES.find((profile) => profile.id === entry.profileId)!;
+      return findCommunicationProfile(entry.profileId);
     }
   }
 
-  const isHcpAudience = inferIsHcpAudience(request.targetAudience, request.prompt);
+  return null;
+}
 
-  if (request.contentType === 'white-paper' || request.contentType === 'report') {
-    if (/\bpayer\b|\bpolicy\b|\bhta\b|\bregulator\b|\bmarket access\b/.test(combined)) {
-      return COMMUNICATION_PROFILES.find((profile) => profile.id === 'policy-submission-hta-evidence-dossier')!;
+function inferAudienceSegment(request: SourceRequestProfile): SourceAudienceSegment {
+  const combined = `${request.targetAudience} ${request.prompt}`.toLowerCase();
+
+  if (/\bpayer\b|\bpolicy\b|\bhta\b|\breimbursement\b|\bformulary\b|\bmarket access\b/.test(combined)) return 'payer';
+  if (/\bkol\b|\bresearcher\b|\bacademic\b|\binvestigator\b|\bkey opinion\b|\bscientist\b/.test(combined)) return 'kol';
+  if (/\bpatient\b|\bcaregiver\b|\bdiagnosed\b|\bself-management\b|\bself management\b/.test(combined)) return 'patient';
+  if (/\bgeneral public\b|\bpublic\b|\bconsumer\b|\bcommunity\b/.test(combined)) return 'public';
+  if (/\bhcp\b|\bhealthcare professional\b|\bclinician\b|\bphysician\b|\bprescriber\b|\bmsl\b|\bspecialist\b|\bmedical affairs\b/.test(combined)) return 'hcp';
+
+  if (request.apiNamespace === 'medical') return 'hcp';
+  if (request.contentType === 'social-post' || request.contentType === 'video') return 'public';
+  return 'patient';
+}
+
+function inferCommunicationIntent(
+  request: SourceRequestProfile,
+  audienceSegment: SourceAudienceSegment,
+): SourceCommunicationIntent {
+  const combined = `${request.prompt} ${request.targetAudience}`.toLowerCase();
+
+  if (/\bhta\b|\bdossier\b|\breimbursement\b|\bpayer\b|\bpolicy\b|\bmarket access\b|\bicer\b|\bqaly\b|\bbudget impact\b/.test(combined)) {
+    return 'policy';
+  }
+  if (/\bcme\b|\bcpd\b|\btraining\b|\be-learning\b|\blearning module\b|\baccredited\b/.test(combined)) {
+    return 'cme';
+  }
+  if (/\bpsp\b|\bpatient support program(me)?\b|\bbooklet\b|\bleaflet\b|\bbrochure\b|\bself-management\b|\bdigital health tool\b|\bpatient app\b/.test(combined)) {
+    return 'education';
+  }
+  if (/\blaunch\b|\bapproval\b|\bapproved\b|\bnew indication\b|\brollout\b|\bdebut\b/.test(combined)) {
+    return 'launch';
+  }
+  if (/\bdetail aid\b|\be-detail\b|\bsales aid\b|\bpromotional\b|\bcommercial\b|\badvert\b|\bcampaign\b/.test(combined)) {
+    return 'promotional';
+  }
+  if (/\bmedical affairs\b|\bmsl\b|\bscientific exchange\b|\bconference\b|\bcongress\b|\bsymposi(a|um)\b|\boff-label\b|\bfield medical\b/.test(combined)) {
+    return 'medical';
+  }
+  if (/\bawareness\b|\bunbranded\b|\bprevention\b|\bscreening\b|\bsymptoms\b|\bburden\b|\bpublic health\b/.test(combined)) {
+    return 'awareness';
+  }
+
+  if (audienceSegment === 'payer') return 'policy';
+
+  if (request.apiNamespace === 'marketing') {
+    if (
+      request.contentType === 'social-post'
+      || request.contentType === 'infographic'
+      || /\bbrand\b|\bcampaign\b|\bdetail aid\b|\be-detail\b|\bsales aid\b|\bpromotional\b|\bcommercial\b|\badvert\b/.test(combined)
+    ) {
+      return audienceSegment === 'hcp' || audienceSegment === 'kol' ? 'promotional' : 'awareness';
     }
-    return isHcpAudience
-      ? COMMUNICATION_PROFILES.find((profile) => profile.id === 'cme-cpd')!
-      : COMMUNICATION_PROFILES.find((profile) => profile.id === 'patient-education-leaflet')!;
+
+    return audienceSegment === 'hcp' || audienceSegment === 'kol' ? 'medical' : 'awareness';
   }
 
-  if (request.contentType === 'social-post' || request.contentType === 'video') {
-    return isHcpAudience
-      ? COMMUNICATION_PROFILES.find((profile) => profile.id === 'congress-conference-materials')!
-      : COMMUNICATION_PROFILES.find((profile) => profile.id === 'social-media-content')!;
+  if (audienceSegment === 'patient' || audienceSegment === 'public') return 'education';
+  return request.contentType === 'presentation' ? 'cme' : 'medical';
+}
+
+function selectCommunicationProfile(
+  request: SourceRequestProfile,
+  audienceSegment: SourceAudienceSegment,
+  communicationIntent: SourceCommunicationIntent,
+): CommunicationProfile {
+  if (communicationIntent === 'policy' || audienceSegment === 'payer') {
+    return findCommunicationProfile('policy-submission-hta-evidence-dossier');
   }
 
-  if (request.contentType === 'presentation') {
-    return isHcpAudience
-      ? COMMUNICATION_PROFILES.find((profile) => profile.id === 'cme-cpd')!
-      : COMMUNICATION_PROFILES.find((profile) => profile.id === 'disease-awareness-campaign')!;
+  if (communicationIntent === 'cme') {
+    return findCommunicationProfile('cme-cpd');
   }
 
-  if (request.contentType === 'podcast') {
-    return isHcpAudience
-      ? COMMUNICATION_PROFILES.find((profile) => profile.id === 'medical-affairs-scientific-exchange')!
-      : COMMUNICATION_PROFILES.find((profile) => profile.id === 'disease-awareness-campaign')!;
+  if (communicationIntent === 'launch') {
+    if (audienceSegment === 'patient' || audienceSegment === 'public') {
+      return findCommunicationProfile('press-release-media-statement');
+    }
+    return findCommunicationProfile('promotional-detail-aid');
   }
 
-  return isHcpAudience
-    ? COMMUNICATION_PROFILES.find((profile) => profile.id === 'medical-affairs-scientific-exchange')!
-    : COMMUNICATION_PROFILES.find((profile) => profile.id === 'patient-education-leaflet')!;
+  if (communicationIntent === 'promotional') {
+    return audienceSegment === 'hcp' || audienceSegment === 'kol'
+      ? findCommunicationProfile('promotional-detail-aid')
+      : findCommunicationProfile('social-media-content');
+  }
+
+  if (communicationIntent === 'education') {
+    if (/\bapp\b|\bdigital health tool\b/.test(`${request.prompt} ${request.targetAudience}`.toLowerCase())) {
+      return findCommunicationProfile('patient-app-digital-health-tool');
+    }
+    if (/\bpsp\b|\bpatient support program(me)?\b/.test(`${request.prompt} ${request.targetAudience}`.toLowerCase())) {
+      return findCommunicationProfile('patient-support-programme');
+    }
+    return findCommunicationProfile('patient-education-leaflet');
+  }
+
+  if (communicationIntent === 'awareness') {
+    return request.contentType === 'social-post' || request.contentType === 'video'
+      ? findCommunicationProfile('social-media-content')
+      : findCommunicationProfile('disease-awareness-campaign');
+  }
+
+  if (audienceSegment === 'hcp' || audienceSegment === 'kol') {
+    return findCommunicationProfile('medical-affairs-scientific-exchange');
+  }
+
+  return findCommunicationProfile('patient-education-leaflet');
+}
+
+function resolveSourcePolicy(request: SourceRequestProfile): ResolvedSourcePolicy {
+  const audienceSegment = inferAudienceSegment(request);
+  const explicitProfile = findExplicitProfile(request);
+  const communicationIntent = explicitProfile?.intent || inferCommunicationIntent(request, audienceSegment);
+  const profile = explicitProfile || selectCommunicationProfile(request, audienceSegment, communicationIntent);
+
+  return {
+    audienceSegment,
+    audienceLabel: AUDIENCE_LABELS[audienceSegment],
+    communicationIntent,
+    communicationIntentLabel: COMMUNICATION_INTENT_LABELS[communicationIntent],
+    profile,
+    formatPolicy: FORMAT_POLICIES[request.contentType],
+    marketPolicy: MARKET_POLICIES[request.market],
+    namespaceLabel: NAMESPACE_LABELS[request.apiNamespace]
+  };
+}
+
+function inferCommunicationProfile(request: SourceRequestProfile): CommunicationProfile {
+  return resolveSourcePolicy(request).profile;
 }
 
 function getCategoryById(id: string): SourceCategoryRule {
@@ -908,21 +1257,28 @@ function evaluatePeerReview(rule: SourceCategoryRule): SourceScreeningCheck {
   return { id: 'peer-review-indexing', label: 'Peer review & indexing', status, note: notes[status] };
 }
 
-function evaluateGeographicFit(prompt: string, candidate: SearchCandidate): SourceScreeningCheck {
-  const promptText = prompt.toLowerCase();
+function evaluateGeographicFit(request: SourceRequestProfile, candidate: SearchCandidate): SourceScreeningCheck {
   const candidateText = `${candidate.title} ${candidate.snippet || ''}`.toLowerCase();
-  const geographyMatch = promptText.match(/\bindia\b|\buk\b|\busa\b|\bunited states\b|\bkorea\b|\beurope\b|\baustralia\b|\bcanada\b/);
+  const geographyTerms: Record<Market, string[]> = {
+    global: ['global', 'international', 'multinational', 'worldwide'],
+    india: ['india', 'indian'],
+    singapore: ['singapore', 'singaporean'],
+    dubai: ['dubai', 'uae', 'united arab emirates', 'gcc'],
+    germany: ['germany', 'german', 'eu', 'european'],
+    us: ['us', 'usa', 'united states', 'american'],
+    uk: ['uk', 'united kingdom', 'britain', 'british', 'england']
+  };
 
-  if (!geographyMatch) {
-    return { id: 'geographic-population-fit', label: 'Geographic & population fit', status: 'unknown', note: 'No explicit target geography detected in the request.' };
+  if (request.market === 'global') {
+    return { id: 'geographic-population-fit', label: 'Geographic & population fit', status: 'unknown', note: 'Global / multi-market request; local fit still needs manual market review.' };
   }
 
-  const geography = geographyMatch[0];
-  if (candidateText.includes(geography)) {
-    return { id: 'geographic-population-fit', label: 'Geographic & population fit', status: 'pass', note: `Source metadata references the requested geography: ${geography}.` };
+  const matchedTerm = geographyTerms[request.market].find((term) => candidateText.includes(term));
+  if (matchedTerm) {
+    return { id: 'geographic-population-fit', label: 'Geographic & population fit', status: 'pass', note: `Source metadata references the requested geography: ${matchedTerm}.` };
   }
 
-  return { id: 'geographic-population-fit', label: 'Geographic & population fit', status: 'caution', note: `Target geography "${geography}" is not obvious from metadata; extrapolation review may be needed.` };
+  return { id: 'geographic-population-fit', label: 'Geographic & population fit', status: 'caution', note: `The requested market (${MARKET_POLICIES[request.market].label}) is not obvious from metadata; extrapolation review may be needed.` };
 }
 
 function evaluateHealthLiteracy(rule: SourceCategoryRule, useCase: SourceEvidenceUseCase): SourceScreeningCheck {
@@ -944,7 +1300,12 @@ function evaluateHealthLiteracy(rule: SourceCategoryRule, useCase: SourceEvidenc
   return { id: 'health-literacy', label: 'Health literacy', status, note: notes[status] };
 }
 
-function buildScreeningChecks(rule: SourceCategoryRule, request: SourceRequestProfile, candidate: SearchCandidate): SourceScreeningCheck[] {
+function buildScreeningChecks(
+  rule: SourceCategoryRule,
+  request: SourceRequestProfile,
+  candidate: SearchCandidate,
+  useCase: SourceEvidenceUseCase,
+): SourceScreeningCheck[] {
   const year = extractYear(`${candidate.title} ${candidate.snippet || ''}`);
 
   return [
@@ -956,9 +1317,9 @@ function buildScreeningChecks(rule: SourceCategoryRule, request: SourceRequestPr
     evaluateAuthorsAccountability(rule),
     evaluateResearchOriginFunding(rule, candidate),
     evaluatePeerReview(rule),
-    evaluateGeographicFit(request.prompt, candidate),
+    evaluateGeographicFit(request, candidate),
     { id: 'replication-consistency', label: 'Replication & consistency', status: rule.replicationDefault || 'unknown', note: rule.replicationDefault === 'pass' ? 'Source type usually reflects replicated or consensus-level evidence.' : rule.replicationDefault === 'caution' ? 'Directional consistency should be verified across other studies.' : rule.replicationDefault === 'fail' ? 'Single-study or non-replicated evidence risk is high.' : 'Replication cannot be determined from metadata alone.' },
-    evaluateHealthLiteracy(rule, inferCommunicationProfile(request).evidenceUseCase)
+    evaluateHealthLiteracy(rule, useCase)
   ];
 }
 
@@ -969,7 +1330,7 @@ function summariseChecks(checks: SourceScreeningCheck[]): string {
     .join(' · ');
 }
 
-function scoreSource(suitability: SourceSuitability, checks: SourceScreeningCheck[]): number {
+function scoreSource(suitability: SourceSuitability, checks: SourceScreeningCheck[], priorityBonus: number = 0): number {
   const suitabilityScore: Record<SourceSuitability, number> = { P: 40, S: 28, C: 10, X: -100 };
   const screeningScore = checks.reduce((score, check) => {
     if (check.status === 'pass') return score + 6;
@@ -977,7 +1338,7 @@ function scoreSource(suitability: SourceSuitability, checks: SourceScreeningChec
     if (check.status === 'fail') return score - 14;
     return score;
   }, 0);
-  return suitabilityScore[suitability] + screeningScore;
+  return suitabilityScore[suitability] + screeningScore + priorityBonus;
 }
 
 function isSourceDisqualified(useCase: SourceEvidenceUseCase, source: ContentSource): boolean {
@@ -1003,20 +1364,72 @@ function fitToRole(suitability: SourceSuitability): ContentSource['recommendedRo
   return 'excluded';
 }
 
-export function buildGovernedSearchQuery(request: SourceRequestProfile): string {
-  const profile = inferCommunicationProfile(request);
-  const hints: Record<SourceEvidenceUseCase, string> = {
-    'hcp-detail-aid': 'phase 3 randomized trial systematic review guideline label prescribing information',
-    'hcp-awareness': 'clinical guideline systematic review evidence update consensus',
-    'hcp-training-cme': 'guideline systematic review evidence teaching update',
-    'patient-awareness': 'cdc who nhs medlineplus awareness symptoms prevention',
-    'patient-education': 'patient education self-management guideline medlineplus nhs mayo clinic',
-    'patient-digital-social': 'who cdc public facts patient-friendly prevention awareness',
-    'pr-media': 'trial results guideline public health statistics reuters',
-    'policy-hta-dossier': 'hta nice icer systematic review cost-effectiveness epidemiology guideline'
-  };
+function uniqueLabels(values: string[]): string[] {
+  return Array.from(new Set(values.filter(Boolean)));
+}
 
-  return `${request.prompt} ${hints[profile.evidenceUseCase]}`.trim();
+function categoryBonus(rule: SourceCategoryRule, suitability: SourceSuitability, policy: ResolvedSourcePolicy): number {
+  let bonus = 0;
+
+  if (policy.profile.preferredCategoryIds?.includes(rule.id)) bonus += 18;
+  if (policy.marketPolicy.preferredCategoryIds?.includes(rule.id)) bonus += 12;
+  if (suitability === 'P') bonus += 6;
+
+  if (policy.communicationIntent === 'promotional' && rule.id === 'regulatory-label-prescribing-information') bonus += 10;
+  if (policy.communicationIntent === 'policy' && ['hta-body-assessments', 'burden-of-disease-heor-epidemiology-studies', 'real-world-evidence-disease-registries'].includes(rule.id)) {
+    bonus += 8;
+  }
+  if ((policy.communicationIntent === 'awareness' || policy.communicationIntent === 'education') && ['government-health-agencies-patient-facing', 'disease-nonprofits-patient-facing', 'validated-health-literacy-frameworks'].includes(rule.id)) {
+    bonus += 8;
+  }
+
+  return bonus;
+}
+
+function hasSelectedCategory(
+  sources: Array<ContentSource & { sourceType?: string }>,
+  categoryIds: string[],
+): boolean {
+  const labels = categoryIds.map((id) => getCategoryById(id).label);
+  return sources.some((source) => source.sourceType && labels.includes(source.sourceType));
+}
+
+function buildHardLockReasons(
+  request: SourceRequestProfile,
+  policy: ResolvedSourcePolicy,
+  selectedSources: ContentSource[],
+): string[] {
+  const reasons: string[] = [];
+  if (selectedSources.length === 0) {
+    return reasons;
+  }
+
+  const hasRegulatoryAnchor = hasSelectedCategory(selectedSources, ['regulatory-label-prescribing-information']);
+  const explicitDetailAidIntent = /\bdetail aid\b|\be-detail\b|\bsales aid\b|\brep-delivered\b|\bvisual aid\b/i.test(
+    `${request.prompt} ${request.targetAudience}`,
+  );
+
+  if (
+    policy.profile.id === 'promotional-detail-aid'
+    && explicitDetailAidIntent
+    && !hasRegulatoryAnchor
+  ) {
+    reasons.push(`Explicit detail-aid style promotional content requires a current ${policy.marketPolicy.label} label / prescribing-information anchor before generation.`);
+  }
+
+  return uniqueLabels(reasons);
+}
+
+export function buildGovernedSearchQuery(request: SourceRequestProfile): string {
+  const policy = resolveSourcePolicy(request);
+  const hints = uniqueLabels([
+    ...policy.profile.sourceSearchHints,
+    ...policy.marketPolicy.sourceSearchHints,
+    ...policy.formatPolicy.sourceSearchHints,
+    ...policy.marketPolicy.controllingReferences,
+  ]);
+
+  return `${request.prompt} ${hints.slice(0, 8).join(' ')}`.trim();
 }
 
 export function buildSourcePolicyBundle(
@@ -1026,14 +1439,17 @@ export function buildSourcePolicyBundle(
 ): {
   governance: SourceGovernanceSummary;
   sources: ContentSource[];
+  screenedSources: ContentSource[];
   sourcePromptBlock: string;
 } {
-  const profile = inferCommunicationProfile(request);
+  const policy = resolveSourcePolicy(request);
+  const profile = policy.profile;
   const useCase = profile.evidenceUseCase;
+  const combinedRegulatoryNotes = uniqueLabels([...profile.regulatoryNotes, ...policy.marketPolicy.regulatoryNotes]);
 
   const screenedSources = results.map((candidate) => {
     const category = detectCategory(candidate);
-    const checks = buildScreeningChecks(category, request, candidate);
+    const checks = buildScreeningChecks(category, request, candidate, useCase);
     const suitability = category.ratings[useCase];
 
     const domain = (() => {
@@ -1061,8 +1477,9 @@ export function buildSourcePolicyBundle(
     };
 
     return {
+      category,
       source,
-      score: scoreSource(suitability, checks),
+      score: scoreSource(suitability, checks, categoryBonus(category, suitability, policy)),
       disqualified: isSourceDisqualified(useCase, source)
     };
   });
@@ -1079,6 +1496,17 @@ export function buildSourcePolicyBundle(
       return acc;
     }, []);
 
+  const screenedSelection = screenedSources
+    .sort((left, right) => right.score - left.score)
+    .reduce<ContentSource[]>((acc, entry) => {
+      if (acc.length >= Math.max(limit, 5)) return acc;
+      if (acc.some((source) => source.domain === entry.source.domain && source.sourceType === entry.source.sourceType)) {
+        return acc;
+      }
+      acc.push(entry.source);
+      return acc;
+    }, []);
+
   const fallback = selected.length > 0
     ? selected
     : screenedSources
@@ -1087,23 +1515,47 @@ export function buildSourcePolicyBundle(
         .slice(0, limit)
         .map((entry) => entry.source);
 
-  const blockedCategories = SOURCE_CATEGORY_RULES
-    .filter((rule) => rule.ratings[useCase] === 'X')
-    .slice(0, 6)
+  const preferredSourceTypes = SOURCE_CATEGORY_RULES
+    .filter((rule) =>
+      rule.ratings[useCase] === 'P'
+      || profile.preferredCategoryIds?.includes(rule.id)
+      || policy.marketPolicy.preferredCategoryIds?.includes(rule.id),
+    )
+    .sort((left, right) => categoryBonus(right, right.ratings[useCase], policy) - categoryBonus(left, left.ratings[useCase], policy))
     .map((rule) => rule.label);
 
-  const hardLockReason = profile.label === 'Promotional detail aid'
-    && !fallback.some((source) => source.tier === 'Tier 1' || source.tier === 'Tier 2')
-    ? 'HCP Detail Aid generation is locked until at least one Tier 1 or Tier 2 source is available.'
-    : undefined;
+  const allowedSourceTypes = SOURCE_CATEGORY_RULES
+    .filter((rule) => rule.ratings[useCase] === 'P' || rule.ratings[useCase] === 'S')
+    .map((rule) => rule.label);
+
+  const blockedCategories = SOURCE_CATEGORY_RULES
+    .filter((rule) => rule.ratings[useCase] === 'X')
+    .map((rule) => rule.label);
+
+  const hardLockReasons = buildHardLockReasons(request, policy, fallback);
+  const hardLockReason = hardLockReasons[0];
+  const sourceSearchHints = uniqueLabels([
+    ...profile.sourceSearchHints,
+    ...policy.marketPolicy.sourceSearchHints,
+    ...policy.formatPolicy.sourceSearchHints,
+  ]);
 
   const sourcePromptBlock = [
     `SOURCE GOVERNANCE PROFILE: ${profile.label} (${USE_CASE_LABELS[useCase]})`,
+    `AUDIENCE / INTENT: ${policy.audienceLabel} · ${policy.communicationIntentLabel}`,
+    `NAMESPACE: ${policy.namespaceLabel}`,
+    `MARKET AUTHORITY: ${policy.marketPolicy.label} · ${policy.marketPolicy.authority}`,
+    `CONTROLLING REFERENCES: ${policy.marketPolicy.controllingReferences.join(' | ')}`,
     `MINIMUM SOURCE STANDARD: ${profile.minimumSourceStandard}`,
+    `FORMAT REQUIREMENTS: ${policy.formatPolicy.formatRequirements.join(' | ')}`,
+    `PREFERRED SOURCE TYPES: ${preferredSourceTypes.slice(0, 8).join('; ')}`,
+    `ALLOWED SOURCE TYPES: ${allowedSourceTypes.slice(0, 10).join('; ')}`,
+    `EXCLUDED SOURCE TYPES: ${blockedCategories.slice(0, 8).join('; ')}`,
+    `SOURCE SEARCH HINTS: ${sourceSearchHints.join(' | ')}`,
     `NON-NEGOTIABLE CHECKS: ${profile.nonNegotiables.join(' | ')}`,
-    `REGULATORY / REVIEW NOTES: ${profile.regulatoryNotes.join(' | ')}`,
+    `REGULATORY / REVIEW NOTES: ${combinedRegulatoryNotes.join(' | ')}`,
     `COMMON FAILURE RISKS: ${profile.commonFailures.join(' | ')}`,
-    blockedCategories.length > 0 ? `DO NOT BASE FACTUAL CLAIMS ON: ${blockedCategories.join('; ')}` : '',
+    hardLockReasons.length > 0 ? `SOURCE LOCKS: ${hardLockReasons.join(' | ')}` : '',
     fallback.length > 0
       ? `APPROVED SOURCE CANDIDATES:\n${fallback.map((source, index) => {
           const fit = source.suitability ? SUITABILITY_LABELS[source.suitability] : 'Screened';
@@ -1116,16 +1568,35 @@ export function buildSourcePolicyBundle(
 
   return {
     governance: {
+      audienceSegment: policy.audienceSegment,
+      audienceLabel: policy.audienceLabel,
+      communicationIntent: policy.communicationIntent,
+      communicationIntentLabel: policy.communicationIntentLabel,
       communicationFormat: profile.label,
+      namespace: request.apiNamespace,
+      namespaceLabel: policy.namespaceLabel,
+      market: request.market,
+      marketLabel: policy.marketPolicy.label,
+      marketAuthority: policy.marketPolicy.authority,
+      controllingReferences: policy.marketPolicy.controllingReferences,
       evidenceUseCase: useCase,
       evidenceUseCaseLabel: USE_CASE_LABELS[useCase],
       minimumSourceStandard: profile.minimumSourceStandard,
+      preferredSourceTypes: uniqueLabels(preferredSourceTypes),
+      allowedSourceTypes: uniqueLabels(allowedSourceTypes),
+      excludedSourceTypes: uniqueLabels(blockedCategories),
+      sourceSearchHints,
+      formatRequirements: policy.formatPolicy.formatRequirements,
       nonNegotiables: profile.nonNegotiables,
-      regulatoryNotes: profile.regulatoryNotes,
+      regulatoryNotes: combinedRegulatoryNotes,
       commonFailures: profile.commonFailures,
+      screenedSourceCount: screenedSelection.length,
+      approvedSourceCount: fallback.length,
+      hardLockReasons,
       hardLockReason
     },
     sources: fallback,
+    screenedSources: screenedSelection,
     sourcePromptBlock
   };
 }

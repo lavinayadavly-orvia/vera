@@ -22,7 +22,7 @@ export function SampleGalleryModal({
         <DialogHeader>
           <DialogTitle>Sample Gallery</DialogTitle>
           <DialogDescription>
-            Browse inspiring examples created with DoneandDone. All samples use 100% free, non-licensed images and icons.
+            Browse inspiring examples created with Vera. All samples use 100% free, non-licensed images and icons.
           </DialogDescription>
         </DialogHeader>
         <SampleGallery samples={samples} onSelectSample={onSelectSample} />

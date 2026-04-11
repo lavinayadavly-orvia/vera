@@ -7,8 +7,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Sparkles, Loader2, ChevronRight, ChevronLeft, Mic, FileText, Video, Image as ImageIcon, LayoutTemplate, ScrollText, BarChart3, Newspaper, ShieldCheck, Megaphone } from 'lucide-react';
-import type { ApiNamespace, ContentType, Market, PromptBlueprint } from '@/types';
+import type { ApiNamespace, ContentStrategySelection, ContentType, Market, PromptBlueprint } from '@/types';
 import { generatePromptsFromTheme } from '@/services/generator';
+import { generatePromptOptionsViaBackend, isBackendRuntimeEnabled } from '@/services/backendRuntime';
+import { getDeliveryContract } from '@/services/deliveryContracts';
 import { useToast } from '@/hooks/use-toast';
 
 export interface DetailedPromptData {
@@ -25,6 +27,7 @@ export interface DetailedPromptData {
 interface GuidedThemeFormProps {
   onGenerate: (data: DetailedPromptData) => Promise<void>;
   isGenerating: boolean;
+  onDraftChange?: (draft: ContentStrategySelection) => void;
 }
 
 const FORMAT_OPTIONS: Array<{
@@ -33,14 +36,14 @@ const FORMAT_OPTIONS: Array<{
   desc: string;
   icon: typeof ImageIcon;
 }> = [
-  { value: 'infographic', label: 'Infographic', desc: 'Visual explainers and posters', icon: ImageIcon },
-  { value: 'white-paper', label: 'White Paper', desc: 'Long-form authoritative documents', icon: FileText },
-  { value: 'presentation', label: 'Presentation', desc: 'Slide deck structure and narrative', icon: LayoutTemplate },
-  { value: 'video', label: 'Video', desc: 'Storyboard, scenes, and scripts', icon: Video },
-  { value: 'podcast', label: 'Podcast', desc: 'Audio-first scripts and cover', icon: Mic },
-  { value: 'document', label: 'Document', desc: 'Professional written document', icon: ScrollText },
-  { value: 'report', label: 'Report', desc: 'Evidence-led analysis and findings', icon: BarChart3 },
-  { value: 'social-post', label: 'Social Post', desc: 'Single-post or carousel-ready copy', icon: Newspaper }
+  { value: 'infographic', label: 'Infographic', desc: 'Exportable visual asset', icon: ImageIcon },
+  { value: 'white-paper', label: 'White Paper', desc: 'Final PDF document package', icon: FileText },
+  { value: 'presentation', label: 'Presentation', desc: 'Editable PPTX deck', icon: LayoutTemplate },
+  { value: 'video', label: 'Video', desc: 'Final rendered video', icon: Video },
+  { value: 'podcast', label: 'Podcast', desc: 'Script plus audio delivery', icon: Mic },
+  { value: 'document', label: 'Document', desc: 'Professional DOC/PDF package', icon: ScrollText },
+  { value: 'report', label: 'Report', desc: 'Evidence-led final report', icon: BarChart3 },
+  { value: 'social-post', label: 'Social Post', desc: 'Export-ready social creative', icon: Newspaper }
 ];
 
 const TONE_OPTIONS: DetailedPromptData['tone'][] = [
@@ -113,7 +116,7 @@ function inferNamespace(contentType: ContentType, prompt: string, audience: stri
   return 'medical';
 }
 
-export function GuidedThemeForm({ onGenerate, isGenerating }: GuidedThemeFormProps) {
+export function GuidedThemeForm({ onGenerate, isGenerating, onDraftChange }: GuidedThemeFormProps) {
   const { toast } = useToast();
   const [step, setStep] = useState(1);
   const [brief, setBrief] = useState('');
@@ -156,12 +159,27 @@ export function GuidedThemeForm({ onGenerate, isGenerating }: GuidedThemeFormPro
     );
   }, [selectedOption]);
 
+  useEffect(() => {
+    const targetAudience = audiencePreset === 'custom'
+      ? customAudience.trim()
+      : AUDIENCE_PRESETS[audiencePreset];
+
+    onDraftChange?.({
+      contentType,
+      market,
+      apiNamespace,
+      targetAudience: targetAudience || undefined,
+    });
+  }, [apiNamespace, audiencePreset, contentType, customAudience, market, onDraftChange]);
+
   const handleGeneratePrompts = async () => {
     if (!brief.trim()) return;
 
     try {
       setIsGeneratingPrompts(true);
-      const options = await generatePromptsFromTheme(brief.trim());
+      const options = isBackendRuntimeEnabled()
+        ? await generatePromptOptionsViaBackend(brief.trim())
+        : await generatePromptsFromTheme(brief.trim());
       setPromptOptions(options);
       setSelectedOptionId(options[0]?.id || '');
       setStep(2);
@@ -201,28 +219,29 @@ export function GuidedThemeForm({ onGenerate, isGenerating }: GuidedThemeFormPro
   const canAdvanceFromBrief = brief.trim().length >= 5;
   const canAdvanceFromOptions = !!selectedOption && editedPrompt.trim().length >= 20;
   const selectedFormatMeta = FORMAT_OPTIONS.find((option) => option.value === contentType);
+  const selectedFormatContract = getDeliveryContract(contentType);
 
   return (
-    <div className="w-full max-w-5xl mx-auto space-y-6 animate-fade-in">
-      <div className="flex items-center justify-center gap-2 mb-8">
+    <div className="mx-auto w-full max-w-5xl space-y-6 animate-fade-in">
+      <div className="mb-8 flex items-center justify-center gap-2">
         {[1, 2, 3].map((num) => (
           <div key={num} className="flex items-center gap-2">
-            <div className={`flex items-center justify-center w-8 h-8 rounded-full border-2 transition-colors ${
-              step >= num ? 'bg-primary border-primary text-primary-foreground' : 'border-muted-foreground text-muted-foreground'
+            <div className={`flex h-9 w-9 items-center justify-center rounded-full border text-sm font-semibold transition-colors ${
+              step >= num ? 'border-[#0b6b6f] bg-[#0b6b6f] text-white shadow-[0_12px_30px_rgba(11,107,111,0.22)]' : 'border-[#0b6b6f]/18 bg-white/90 text-[#6f898a]'
             }`}>
               {num}
             </div>
-            {num < 3 && <div className={`h-0.5 w-16 transition-colors ${step > num ? 'bg-primary' : 'bg-muted-foreground'}`} />}
+            {num < 3 && <div className={`h-px w-16 transition-colors ${step > num ? 'bg-[#ff7a1a]' : 'bg-[#0b6b6f]/18'}`} />}
           </div>
         ))}
       </div>
 
       {step === 1 && (
-        <Card className="border-2 animate-fade-in shadow-md">
+        <Card className="animate-fade-in overflow-hidden rounded-[34px] border border-[#0b6b6f]/12 bg-white/94 shadow-[0_28px_90px_rgba(8,54,58,0.08)] backdrop-blur-md">
           <CardHeader>
-            <CardTitle>Start with One Line</CardTitle>
+            <CardTitle className="text-3xl font-semibold tracking-[-0.04em] text-[#0b6b6f]">Start with One Line</CardTitle>
             <CardDescription>
-              Give DoneandDone a rough one-line brief. We’ll turn it into four stronger prompt directions for you to choose from.
+              Give Vera a rough one-line brief. We’ll turn it into four stronger prompt directions for you to choose from.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -230,19 +249,19 @@ export function GuidedThemeForm({ onGenerate, isGenerating }: GuidedThemeFormPro
               value={brief}
               onChange={(e) => setBrief(e.target.value)}
               placeholder="e.g., diabetes prevention for the general public, or AI trends for hospital leadership"
-              className="min-h-[110px] text-lg resize-none bg-card focus:border-primary transition-all p-4"
+              className="min-h-[110px] resize-none rounded-[24px] border-[#0b6b6f]/14 bg-[#fbffff] p-4 text-lg transition-all focus:border-[#0b6b6f]"
               disabled={isGeneratingPrompts}
             />
             <div className="grid gap-2 text-sm text-muted-foreground">
-              <div className="rounded-lg border border-dashed px-3 py-2">Try: "Obesity in women under 35 in Korea"</div>
-              <div className="rounded-lg border border-dashed px-3 py-2">Try: "Future of digital therapeutics in diabetes care"</div>
-              <div className="rounded-lg border border-dashed px-3 py-2">Try: "White paper on hospital AI adoption barriers"</div>
+              <div className="rounded-2xl border border-dashed border-[#ffcfaa] bg-[#fff8f2] px-3 py-2">Try: "Obesity in women under 35 in Korea"</div>
+              <div className="rounded-2xl border border-dashed border-[#ffcfaa] bg-[#fff8f2] px-3 py-2">Try: "Future of digital therapeutics in diabetes care"</div>
+              <div className="rounded-2xl border border-dashed border-[#ffcfaa] bg-[#fff8f2] px-3 py-2">Try: "White paper on hospital AI adoption barriers"</div>
             </div>
             <Button
               onClick={handleGeneratePrompts}
               disabled={!canAdvanceFromBrief || isGeneratingPrompts}
               size="lg"
-              className="w-full mt-4"
+              className="mt-4 w-full rounded-full"
             >
               {isGeneratingPrompts ? (
                 <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Building Prompt Options...</>
@@ -255,9 +274,9 @@ export function GuidedThemeForm({ onGenerate, isGenerating }: GuidedThemeFormPro
       )}
 
       {step === 2 && (
-        <Card className="border-2 animate-fade-in">
+        <Card className="animate-fade-in overflow-hidden rounded-[34px] border border-[#0b6b6f]/12 bg-white/94 shadow-[0_28px_90px_rgba(8,54,58,0.08)] backdrop-blur-md">
           <CardHeader>
-            <CardTitle>Choose Your Direction</CardTitle>
+            <CardTitle className="text-3xl font-semibold tracking-[-0.04em] text-[#0b6b6f]">Choose Your Direction</CardTitle>
             <CardDescription>
               Pick the detailed prompt that best matches your goal. You can still edit it before generation.
             </CardDescription>
@@ -268,8 +287,8 @@ export function GuidedThemeForm({ onGenerate, isGenerating }: GuidedThemeFormPro
                 <Label
                   key={option.id}
                   htmlFor={`prompt-option-${option.id}`}
-                  className={`cursor-pointer border-2 rounded-2xl p-5 transition-all ${
-                    selectedOptionId === option.id ? 'border-primary bg-primary/5 ring-2 ring-primary/20' : 'border-border hover:border-primary/50'
+                  className={`cursor-pointer rounded-[24px] border p-5 transition-all ${
+                    selectedOptionId === option.id ? 'border-[#0b6b6f]/30 bg-[#eff8f8] ring-1 ring-[#ff7a1a]/20' : 'border-[#0b6b6f]/12 bg-white hover:border-[#0b6b6f]/28'
                   }`}
                 >
                   <div className="flex items-start gap-3">
@@ -277,13 +296,13 @@ export function GuidedThemeForm({ onGenerate, isGenerating }: GuidedThemeFormPro
                     <div className="space-y-3 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-base font-semibold">{option.label}</span>
-                        <Badge variant="secondary" className="capitalize">
+                        <Badge variant="secondary" className="capitalize bg-[#fff2e7] text-[#c96a22]">
                           {option.recommendedContentType.replace('-', ' ')}
                         </Badge>
                       </div>
                       <p className="text-sm font-medium text-foreground/90">{option.angle}</p>
                       <p className="text-sm text-muted-foreground leading-relaxed">{option.rationale}</p>
-                      <div className="rounded-xl bg-background/70 border p-3 text-sm leading-relaxed text-muted-foreground">
+                      <div className="rounded-2xl border border-[#0b6b6f]/10 bg-[#fbffff] p-3 text-sm leading-relaxed text-muted-foreground">
                         {option.prompt}
                       </div>
                     </div>
@@ -293,7 +312,7 @@ export function GuidedThemeForm({ onGenerate, isGenerating }: GuidedThemeFormPro
             </RadioGroup>
 
             {selectedOption && (
-              <div className="space-y-3 rounded-2xl border bg-accent/20 p-4">
+              <div className="space-y-3 rounded-[24px] border border-[#0b6b6f]/14 bg-[#f6fbfb] p-5">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <Label htmlFor="edited-prompt" className="text-base font-semibold">Final Prompt</Label>
@@ -302,25 +321,25 @@ export function GuidedThemeForm({ onGenerate, isGenerating }: GuidedThemeFormPro
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <Badge variant="outline">{selectedOption.recommendedTone}</Badge>
-                    <Badge variant="outline">{selectedOption.recommendedScientificDepth}</Badge>
-                    <Badge variant="outline">{selectedOption.recommendedLength}</Badge>
+                    <Badge variant="outline" className="border-[#0b6b6f]/14 bg-white">{selectedOption.recommendedTone}</Badge>
+                    <Badge variant="outline" className="border-[#0b6b6f]/14 bg-white">{selectedOption.recommendedScientificDepth}</Badge>
+                    <Badge variant="outline" className="border-[#0b6b6f]/14 bg-white">{selectedOption.recommendedLength}</Badge>
                   </div>
                 </div>
                 <Textarea
                   id="edited-prompt"
                   value={editedPrompt}
                   onChange={(e) => setEditedPrompt(e.target.value)}
-                  className="min-h-[160px] resize-none text-base"
+                  className="min-h-[160px] resize-none rounded-[22px] border-[#0b6b6f]/12 bg-white text-base"
                 />
               </div>
             )}
 
             <div className="flex gap-3 pt-2">
-              <Button onClick={() => setStep(1)} variant="outline" size="lg" className="flex-1">
+              <Button onClick={() => setStep(1)} variant="outline" size="lg" className="flex-1 rounded-full">
                 <ChevronLeft className="w-4 h-4 mr-2" /> Back
               </Button>
-              <Button onClick={() => setStep(3)} disabled={!canAdvanceFromOptions} size="lg" className="flex-1">
+              <Button onClick={() => setStep(3)} disabled={!canAdvanceFromOptions} size="lg" className="flex-1 rounded-full">
                 Choose Format & Settings <ChevronRight className="w-4 h-4 ml-2" />
               </Button>
             </div>
@@ -329,9 +348,9 @@ export function GuidedThemeForm({ onGenerate, isGenerating }: GuidedThemeFormPro
       )}
 
       {step === 3 && (
-        <Card className="border-2 animate-fade-in">
+        <Card className="animate-fade-in overflow-hidden rounded-[34px] border border-[#0b6b6f]/12 bg-white/94 shadow-[0_28px_90px_rgba(8,54,58,0.08)] backdrop-blur-md">
           <CardHeader>
-            <CardTitle>Choose Format and Delivery</CardTitle>
+            <CardTitle className="text-3xl font-semibold tracking-[-0.04em] text-[#0b6b6f]">Choose Format and Delivery</CardTitle>
             <CardDescription>
               Finalize the output format, tone, depth, and audience before generation. Feedback and regeneration stay available after output.
             </CardDescription>
@@ -343,7 +362,7 @@ export function GuidedThemeForm({ onGenerate, isGenerating }: GuidedThemeFormPro
                 id="final-prompt"
                 value={editedPrompt}
                 onChange={(e) => setEditedPrompt(e.target.value)}
-                className="min-h-[150px] resize-none text-base"
+                className="min-h-[150px] resize-none rounded-[24px] border-[#0b6b6f]/12 bg-[#fbffff] text-base"
                 disabled={isGenerating}
               />
             </div>
@@ -355,19 +374,28 @@ export function GuidedThemeForm({ onGenerate, isGenerating }: GuidedThemeFormPro
                   {FORMAT_OPTIONS.map((format) => {
                     const Icon = format.icon;
                     const isRecommended = selectedOption?.recommendedContentType === format.value;
+                    const deliveryContract = getDeliveryContract(format.value);
                     return (
                       <Label key={format.value} htmlFor={`fmt-${format.value}`} className="cursor-pointer">
-                        <div className={`h-full p-4 border-2 rounded-xl flex flex-col items-start gap-3 transition-all ${
-                          contentType === format.value ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'
+                        <div className={`flex h-full flex-col items-start gap-3 rounded-[22px] border p-4 transition-all ${
+                          contentType === format.value ? 'border-[#0b6b6f]/30 bg-[#eff8f8]' : 'border-[#0b6b6f]/12 bg-white hover:border-[#0b6b6f]/28'
                         }`}>
                           <div className="flex items-center justify-between w-full gap-2">
                             <RadioGroupItem value={format.value} id={`fmt-${format.value}`} className="sr-only" />
-                            <Icon className={`w-7 h-7 ${contentType === format.value ? 'text-primary' : 'text-muted-foreground'}`} />
-                            {isRecommended && <Badge variant="secondary">Recommended</Badge>}
+                            <Icon className={`w-7 h-7 ${contentType === format.value ? 'text-[#0b6b6f]' : 'text-muted-foreground'}`} />
+                            {isRecommended && <Badge variant="secondary" className="bg-[#fff2e7] text-[#c96a22]">Recommended</Badge>}
                           </div>
                           <div>
                             <p className="font-semibold">{format.label}</p>
                             <p className="text-xs text-muted-foreground mt-1">{format.desc}</p>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              <Badge variant="outline" className="border-[#0b6b6f]/14 bg-white text-[10px]">
+                                Final: {deliveryContract.primaryDeliverable}
+                              </Badge>
+                              <Badge variant={deliveryContract.readiness === 'ready' ? 'secondary' : 'destructive'} className={`text-[10px] ${deliveryContract.readiness === 'ready' ? 'bg-[#eff8f8] text-[#0b6b6f]' : ''}`}>
+                                {deliveryContract.readiness === 'ready' ? deliveryContract.providerLabel : 'Setup required'}
+                              </Badge>
+                            </div>
                           </div>
                         </div>
                       </Label>
@@ -376,9 +404,17 @@ export function GuidedThemeForm({ onGenerate, isGenerating }: GuidedThemeFormPro
                 </div>
               </RadioGroup>
               {selectedFormatMeta && (
-                <p className="text-sm text-muted-foreground">
-                  Selected delivery: <span className="font-medium text-foreground">{selectedFormatMeta.label}</span> · {selectedFormatMeta.desc}
-                </p>
+                <div className="space-y-1">
+                  <p className="text-sm text-muted-foreground">
+                    Selected delivery: <span className="font-medium text-foreground">{selectedFormatMeta.label}</span> · {selectedFormatMeta.desc}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Final asset: <span className="font-medium text-foreground">{selectedFormatContract.primaryDeliverable}</span> · Provider: <span className="font-medium text-foreground">{selectedFormatContract.providerLabel}</span>
+                  </p>
+                  <p className={`text-xs ${selectedFormatContract.readiness === 'ready' ? 'text-muted-foreground' : 'text-amber-700'}`}>
+                    {selectedFormatContract.note}
+                  </p>
+                </div>
               )}
             </div>
 
@@ -389,7 +425,7 @@ export function GuidedThemeForm({ onGenerate, isGenerating }: GuidedThemeFormPro
                   {TONE_OPTIONS.map((toneOption) => (
                     <Label key={toneOption} htmlFor={`tone-${toneOption}`} className="cursor-pointer">
                       <div className={`flex items-center gap-3 p-3 rounded-xl border transition-colors ${
-                        tone === toneOption ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40'
+                        tone === toneOption ? 'border-[#0b6b6f]/30 bg-[#eff8f8]' : 'border-[#0b6b6f]/12 bg-white hover:border-[#0b6b6f]/28'
                       }`}>
                         <RadioGroupItem value={toneOption} id={`tone-${toneOption}`} />
                         <span className="capitalize font-medium">{toneOption}</span>
@@ -401,8 +437,8 @@ export function GuidedThemeForm({ onGenerate, isGenerating }: GuidedThemeFormPro
 
               <div className="space-y-3">
                 <Label className="text-base font-semibold">Market / Region</Label>
-                <Select value={market} onValueChange={(value) => setMarket(value as Market)}>
-                  <SelectTrigger>
+                  <Select value={market} onValueChange={(value) => setMarket(value as Market)}>
+                  <SelectTrigger className="rounded-2xl border-[#0b6b6f]/12 bg-white">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -424,10 +460,10 @@ export function GuidedThemeForm({ onGenerate, isGenerating }: GuidedThemeFormPro
                     return (
                       <Label key={option.value} htmlFor={`namespace-${option.value}`} className="cursor-pointer">
                         <div className={`flex items-start gap-3 p-3 rounded-xl border transition-colors ${
-                          apiNamespace === option.value ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40'
+                          apiNamespace === option.value ? 'border-[#0b6b6f]/30 bg-[#eff8f8]' : 'border-[#0b6b6f]/12 bg-white hover:border-[#0b6b6f]/28'
                         }`}>
                           <RadioGroupItem value={option.value} id={`namespace-${option.value}`} />
-                          <Icon className={`w-4 h-4 mt-0.5 ${apiNamespace === option.value ? 'text-primary' : 'text-muted-foreground'}`} />
+                          <Icon className={`w-4 h-4 mt-0.5 ${apiNamespace === option.value ? 'text-[#0b6b6f]' : 'text-muted-foreground'}`} />
                           <div>
                             <p className="font-medium">{option.label}</p>
                             <p className="text-xs text-muted-foreground mt-1">{option.desc}</p>
@@ -440,7 +476,7 @@ export function GuidedThemeForm({ onGenerate, isGenerating }: GuidedThemeFormPro
 
                 <Label className="text-base font-semibold">Length</Label>
                 <Select value={length} onValueChange={(value) => setLength(value as DetailedPromptData['length'])}>
-                  <SelectTrigger>
+                  <SelectTrigger className="rounded-2xl border-[#0b6b6f]/12 bg-white">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -453,7 +489,7 @@ export function GuidedThemeForm({ onGenerate, isGenerating }: GuidedThemeFormPro
 
                 <Label className="text-base font-semibold pt-2 block">Scientific Depth</Label>
                 <Select value={scientificDepth} onValueChange={(value) => setScientificDepth(value as DetailedPromptData['scientificDepth'])}>
-                  <SelectTrigger>
+                  <SelectTrigger className="rounded-2xl border-[#0b6b6f]/12 bg-white">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -470,7 +506,7 @@ export function GuidedThemeForm({ onGenerate, isGenerating }: GuidedThemeFormPro
                 <RadioGroup value={audiencePreset} onValueChange={(value) => setAudiencePreset(value as 'general' | 'hcp' | 'leadership' | 'custom')} className="space-y-2">
                   <Label htmlFor="aud-general" className="cursor-pointer">
                     <div className={`flex items-center gap-3 p-3 rounded-xl border transition-colors ${
-                      audiencePreset === 'general' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40'
+                      audiencePreset === 'general' ? 'border-[#0b6b6f]/30 bg-[#eff8f8]' : 'border-[#0b6b6f]/12 bg-white hover:border-[#0b6b6f]/28'
                     }`}>
                       <RadioGroupItem id="aud-general" value="general" />
                       <span className="font-medium">General public</span>
@@ -478,7 +514,7 @@ export function GuidedThemeForm({ onGenerate, isGenerating }: GuidedThemeFormPro
                   </Label>
                   <Label htmlFor="aud-hcp" className="cursor-pointer">
                     <div className={`flex items-center gap-3 p-3 rounded-xl border transition-colors ${
-                      audiencePreset === 'hcp' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40'
+                      audiencePreset === 'hcp' ? 'border-[#0b6b6f]/30 bg-[#eff8f8]' : 'border-[#0b6b6f]/12 bg-white hover:border-[#0b6b6f]/28'
                     }`}>
                       <RadioGroupItem id="aud-hcp" value="hcp" />
                       <span className="font-medium">HCPs / clinicians</span>
@@ -486,7 +522,7 @@ export function GuidedThemeForm({ onGenerate, isGenerating }: GuidedThemeFormPro
                   </Label>
                   <Label htmlFor="aud-leadership" className="cursor-pointer">
                     <div className={`flex items-center gap-3 p-3 rounded-xl border transition-colors ${
-                      audiencePreset === 'leadership' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40'
+                      audiencePreset === 'leadership' ? 'border-[#0b6b6f]/30 bg-[#eff8f8]' : 'border-[#0b6b6f]/12 bg-white hover:border-[#0b6b6f]/28'
                     }`}>
                       <RadioGroupItem id="aud-leadership" value="leadership" />
                       <span className="font-medium">Leadership / decision-makers</span>
@@ -494,7 +530,7 @@ export function GuidedThemeForm({ onGenerate, isGenerating }: GuidedThemeFormPro
                   </Label>
                   <Label htmlFor="aud-custom" className="cursor-pointer">
                     <div className={`flex items-center gap-3 p-3 rounded-xl border transition-colors ${
-                      audiencePreset === 'custom' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40'
+                      audiencePreset === 'custom' ? 'border-[#0b6b6f]/30 bg-[#eff8f8]' : 'border-[#0b6b6f]/12 bg-white hover:border-[#0b6b6f]/28'
                     }`}>
                       <RadioGroupItem id="aud-custom" value="custom" />
                       <span className="font-medium">Custom audience</span>
@@ -507,19 +543,19 @@ export function GuidedThemeForm({ onGenerate, isGenerating }: GuidedThemeFormPro
                     value={customAudience}
                     onChange={(e) => setCustomAudience(e.target.value)}
                     placeholder="Describe the exact audience..."
-                    className="min-h-[88px] resize-none"
+                    className="min-h-[88px] resize-none rounded-[22px] border-[#0b6b6f]/12 bg-white"
                   />
                 )}
               </div>
             </div>
 
-            <div className="flex gap-3 pt-4 border-t">
-              <Button onClick={() => setStep(2)} variant="outline" size="lg" className="flex-1" disabled={isGenerating}>
+            <div className="flex gap-3 border-t border-[#0b6b6f]/10 pt-4">
+              <Button onClick={() => setStep(2)} variant="outline" size="lg" className="flex-1 rounded-full" disabled={isGenerating}>
                 <ChevronLeft className="w-4 h-4 mr-2" /> Back
               </Button>
               <Button
                 onClick={handleGenerateContent}
-                className="flex-1 text-lg py-6"
+                className="flex-1 rounded-full py-6 text-lg"
                 size="lg"
                 disabled={isGenerating || !editedPrompt.trim() || (audiencePreset === 'custom' && !customAudience.trim())}
               >

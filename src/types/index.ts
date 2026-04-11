@@ -1,6 +1,10 @@
 export type ContentType = 'infographic' | 'video' | 'presentation' | 'social-post' | 'document' | 'report' | 'podcast' | 'white-paper';
 export type Market = 'global' | 'india' | 'singapore' | 'dubai' | 'germany' | 'us' | 'uk';
 export type ApiNamespace = 'medical' | 'marketing';
+export type DeliveryReadiness = 'ready' | 'provider-required';
+export type SourceAudienceSegment = 'patient' | 'hcp' | 'kol' | 'public' | 'payer';
+export type SourceCommunicationIntent = 'awareness' | 'launch' | 'medical' | 'promotional' | 'cme' | 'policy' | 'education';
+export type VideoAspectRatio = '16:9' | '9:16' | '1:1';
 export type RegulatoryContentType =
   | 'promotional'
   | 'scientific-exchange'
@@ -19,6 +23,13 @@ export interface GenerationRequest {
   outputFormat?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ContentStrategySelection {
+  contentType?: ContentType;
+  market?: Market;
+  apiNamespace?: ApiNamespace;
+  targetAudience?: string;
 }
 
 export interface ContentSource {
@@ -61,14 +72,51 @@ export interface SourceScreeningCheck {
 }
 
 export interface SourceGovernanceSummary {
+  audienceSegment: SourceAudienceSegment;
+  audienceLabel: string;
+  communicationIntent: SourceCommunicationIntent;
+  communicationIntentLabel: string;
   communicationFormat: string;
+  namespace: ApiNamespace;
+  namespaceLabel: string;
+  market: Market;
+  marketLabel: string;
+  marketAuthority: string;
+  controllingReferences: string[];
   evidenceUseCase: SourceEvidenceUseCase;
   evidenceUseCaseLabel: string;
   minimumSourceStandard: string;
+  preferredSourceTypes: string[];
+  allowedSourceTypes: string[];
+  excludedSourceTypes: string[];
+  sourceSearchHints: string[];
+  formatRequirements: string[];
   nonNegotiables: string[];
   regulatoryNotes: string[];
   commonFailures: string[];
+  screenedSourceCount?: number;
+  approvedSourceCount?: number;
+  hardLockReasons?: string[];
   hardLockReason?: string;
+}
+
+export interface DeliveryContractSummary {
+  contentType: ContentType;
+  formatLabel: string;
+  primaryDeliverable: string;
+  supportingDeliverables: string[];
+  providerLabel: string;
+  readiness: DeliveryReadiness;
+  note: string;
+  finalOnly: boolean;
+}
+
+export interface ProviderStackSummary {
+  text?: string;
+  audio?: string;
+  design?: string;
+  presentation?: string;
+  video?: string;
 }
 
 export interface GuardrailIssue {
@@ -370,6 +418,7 @@ export interface GeneratedOutput {
   format: string;
   downloadUrl: string;
   previewUrl?: string;
+  renderedVideoUrl?: string;
   audioUrl?: string;
   market?: Market;
   extent?: string;
@@ -377,13 +426,18 @@ export interface GeneratedOutput {
   theme?: string;
   carouselSlides?: CarouselSlide[];
   sources?: ContentSource[];
+  screenedSources?: ContentSource[];
+  deliveryContract?: DeliveryContractSummary;
   sourceGovernance?: SourceGovernanceSummary;
   operationalGuardrails?: OperationalGuardrailReport;
   apiNamespace?: ApiNamespace;
   regulatoryContentType?: RegulatoryContentType;
   complianceArchitecture?: ComplianceArchitectureSummary;
+  providerStack?: ProviderStackSummary;
   videoThumbnail?: string;
   videoScenes?: VideoScene[];
+  videoPackage?: VideoProductionPackage;
+  videoRender?: VideoRenderSummary;
   infographicData?: InfographicData;
 }
 
@@ -397,10 +451,55 @@ export interface CarouselSlide {
 export interface VideoScene {
   sceneNumber: number;
   imageUrl: string;
+  sceneTitle?: string;
+  beatRole?: 'hook' | 'context' | 'problem' | 'proof' | 'resolution' | 'cta';
   visualDescription: string;
+  shotType?: string;
+  motionCue?: string;
   onScreenText: string;
   voiceoverText: string;
   duration: number;
+  transition?: string;
+  editNote?: string;
+  continuityAnchor?: string;
+}
+
+export interface VideoCreativeDirection {
+  storyArc: string;
+  hookStrategy: string;
+  voiceTone: string;
+  visualStyle: string;
+  subjectFocus: string;
+  recurringMotif: string;
+  cameraLanguage: string;
+  editRhythm: string;
+  captionStyle: string;
+  continuityNotes: string[];
+  doNotShow: string[];
+}
+
+export interface VideoProductionPackage {
+  title: string;
+  totalDuration: number;
+  aspectRatio: VideoAspectRatio;
+  platformIntent: 'presentation' | 'social' | 'shorts';
+  musicMood: string;
+  colorPalette: string[];
+  productionNotes: string[];
+  narrationScript: string;
+  creativeDirection?: VideoCreativeDirection;
+}
+
+export interface VideoRenderSummary {
+  provider: 'luma';
+  status: 'completed' | 'skipped' | 'failed';
+  mode: 'text-to-video' | 'extended-sequence';
+  model: string;
+  resolution: string;
+  durationSeconds: number;
+  generationId?: string;
+  generationIds?: string[];
+  note?: string;
 }
 
 export interface DetailedGenerationParams {

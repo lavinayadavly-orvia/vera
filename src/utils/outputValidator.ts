@@ -1,5 +1,5 @@
 /**
- * DoneandDone — Output Quality & Anti-Gibberish Library
+ * Vera — Output Quality & Anti-Gibberish Library
  * ======================================================
  * Drop this file into your agent pipeline.
  * Every AI response passes through validateOutput() before

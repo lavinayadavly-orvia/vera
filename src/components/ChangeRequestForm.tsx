@@ -80,7 +80,7 @@ export function ChangeRequestForm({ onSubmit, onCancel, isRegenerating }: Change
           <div>
             <h3 className="text-xl font-bold">Request Changes</h3>
             <p className="text-sm text-muted-foreground mt-1">
-              Describe your feedback and DoneandDone will incorporate it into the next version
+              Describe your feedback and Vera will incorporate it into the next version
             </p>
           </div>
           <Button 

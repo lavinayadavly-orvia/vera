@@ -1,7 +1,7 @@
 /**
  * Sample Repository Service
  *
- * Centralized system for managing DoneandDone sample outputs.
+ * Centralized system for managing Vera sample outputs.
  * RULE: Only free, non-licensed images and icons are allowed.
  *
  * Approved Sources:

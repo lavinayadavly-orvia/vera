@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Content Strategy & MLR Matrix</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #ffffff; --bg2: #f5f4f0; --bg3: #eeedea;
+    --text: #1a1a18; --text2: #5a5a56; --text3: #9a9992;
+    --border: rgba(0,0,0,0.12); --border2: rgba(0,0,0,0.2);
+    --info-bg: #E6F1FB; --info-border: #B5D4F4; --info-text: #185FA5;
+    --success-bg: #E1F5EE; --success-border: #9FE1CB; --success-text: #0F6E56;
+    --warning-bg: #FAEEDA; --warning-border: #FAC775; --warning-text: #854F0B;
+    --danger-bg: #FCEBEB; --danger-border: #F7C1C1; --danger-text: #A32D2D;
+    --radius: 8px; --radius-lg: 12px;
+    --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1c1c1a; --bg2: #242422; --bg3: #2c2c2a;
+      --text: #e8e6de; --text2: #a8a69e; --text3: #68665e;
+      --border: rgba(255,255,255,0.1); --border2: rgba(255,255,255,0.2);
+      --info-bg: #0c2a44; --info-border: #1a4a6e; --info-text: #7ab8f0;
+      --success-bg: #052820; --success-border: #0a4830; --success-text: #4ec99a;
+      --warning-bg: #2a1e06; --warning-border: #4a3010; --warning-text: #f0b050;
+      --danger-bg: #280a0a; --danger-border: #4a1010; --danger-text: #f08080;
+    }
+  }
+  body { font-family: var(--font); background: var(--bg); color: var(--text); padding: 24px; max-width: 960px; margin: 0 auto; }
+  h1 { font-size: 18px; font-weight: 500; margin-bottom: 4px; }
+  .subtitle { font-size: 13px; color: var(--text2); margin-bottom: 20px; }
+  .dim-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+  .dim-card { background: var(--bg2); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 12px 14px; }
+  .dim-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; margin-bottom: 8px; }
+  .dim-label.a { color: #C2410C; } .dim-label.b { color: #0F6E56; } .dim-label.c { color: #854F0B; } .dim-label.d { color: #993C1D; }
+  .chip-group { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { font-size: 11px; padding: 5px 10px; border-radius: 20px; border: 0.5px solid var(--border2); cursor: pointer; background: transparent; color: var(--text2); transition: all .15s; white-space: nowrap; font-family: var(--font); }
+  .chip:hover { background: var(--bg3); color: var(--text); }
+  .chip.aud.sel { background: #FED7AA; color: #7C2D12; border-color: transparent; }
+  .chip.com.sel { background: #9FE1CB; color: #04342C; border-color: transparent; }
+  .chip.fmt.sel { background: #FAC775; color: #412402; border-color: transparent; }
+  .chip.geo.sel { background: #F5C4B3; color: #4A1B0C; border-color: transparent; }
+  .progress { display: flex; gap: 6px; margin-bottom: 12px; align-items: center; }
+  .prog-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border2); transition: background .2s; }
+  .prog-dot.done { background: #C2410C; }
+  .prog-label { font-size: 11px; color: var(--text3); margin-left: 4px; }
+  .output { background: var(--bg); border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 18px; min-height: 120px; }
+  .out-placeholder { color: var(--text3); font-size: 13px; text-align: center; padding: 32px 0; }
+  .crumb { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; font-size: 11px; color: var(--text3); }
+  .crumb span { padding: 2px 8px; border-radius: 20px; font-weight: 500; }
+  .crumb span.a { background: #FFEDD5; color: #7C2D12; }
+  .crumb span.b { background: #E1F5EE; color: #04342C; }
+  .crumb span.c { background: #FAEEDA; color: #412402; }
+  .crumb span.d { background: #FAECE7; color: #4A1B0C; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+  .ob { padding: 12px 14px; border-radius: var(--radius); border: 0.5px solid var(--border); }
+  .ob.ev { background: var(--info-bg); border-color: var(--info-border); }
+  .ob.ge { background: #FAECE7; border-color: #F5C4B3; }
+  .ob.tn { background: var(--success-bg); border-color: var(--success-border); }
+  .ob.av { background: var(--danger-bg); border-color: var(--danger-border); }
+  .ob.fm { background: var(--warning-bg); border-color: var(--warning-border); }
+  .ob.mlr { background: var(--bg2); border-color: var(--border); }
+  .ob-h { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px; }
+  .ob-h.ev { color: var(--info-text); } .ob-h.ge { color: #993C1D; } .ob-h.tn { color: var(--success-text); }
+  .ob-h.av { color: var(--danger-text); } .ob-h.fm { color: var(--warning-text); } .ob-h.mlr { color: var(--text2); }
+  .ob-body { font-size: 12px; line-height: 1.6; color: var(--text); }
+  .ob-body li { margin: 2px 0 2px 14px; list-style: disc; }
+  .ob-body strong { font-weight: 500; }
+  .mlr-bar { display: flex; gap: 3px; height: 6px; border-radius: 4px; overflow: hidden; margin: 6px 0 10px; }
+  .mlr-seg { flex: 1; background: var(--bg3); border-radius: 2px; }
+  .mlr-seg.lit { background: #E24B4A; }
+  .complexity-label { font-size: 20px; font-weight: 500; color: var(--text); margin-bottom: 2px; }
+  .complexity-sub { font-size: 11px; color: var(--text2); }
+  .signoff-row-item { display: flex; align-items: flex-start; gap: 8px; padding: 6px 0; border-bottom: 0.5px solid var(--border); }
+  .signoff-row-item:last-child { border-bottom: none; }
+  .badge { font-size: 11px; padding: 3px 9px; border-radius: 20px; font-weight: 500; white-space: nowrap; min-width: 70px; text-align: center; }
+  .badge.req { background: var(--danger-bg); color: var(--danger-text); }
+  .badge.opt { background: var(--success-bg); color: var(--success-text); }
+  .badge.na { background: var(--bg3); color: var(--text3); }
+  .rounds-row { display: flex; gap: 4px; align-items: center; margin: 6px 0 0; }
+  .round-dot { width: 14px; height: 14px; border-radius: 50%; border: 0.5px solid var(--border2); background: var(--bg3); flex-shrink: 0; }
+  .round-dot.active { background: #E24B4A; border-color: #E24B4A; }
+  .rounds-label { font-size: 11px; color: var(--text2); margin-left: 4px; }
+  .trigger { font-size: 11px; padding: 4px 10px; border-radius: 4px; margin: 3px 0; display: block; line-height: 1.5; }
+  .trigger.req { border-left: 2px solid #E24B4A; background: var(--danger-bg); color: var(--danger-text); }
+  .trigger.warn { border-left: 2px solid #EF9F27; background: var(--warning-bg); color: var(--warning-text); }
+  .trigger.ok { border-left: 2px solid #639922; background: var(--success-bg); color: var(--success-text); }
+  .divider { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--text3); margin: 14px 0 8px; padding-top: 14px; border-top: 0.5px solid var(--border); }
+  .role-name { font-size: 12px; font-weight: 500; color: var(--text); }
+  .role-note { font-size: 11px; color: var(--text2); }
+  @media (max-width: 600px) {
+    .dim-row { grid-template-columns: 1fr; }
+    .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    body { padding: 16px; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Content Strategy & MLR Matrix</h1>
+<p class="subtitle">Select one option from each dimension to generate your strategy brief, source requirements, and MLR sign-off guide.</p>
+
+<div class="dim-row">
+  <div class="dim-card">
+    <div class="dim-label a">1 · Audience</div>
+    <div class="chip-group">
+      <button class="chip aud" onclick="pick('aud',this,'patient')">Patient</button>
+      <button class="chip aud" onclick="pick('aud',this,'hcp')">HCP</button>
+      <button class="chip aud" onclick="pick('aud',this,'kol')">KOL / Researcher</button>
+      <button class="chip aud" onclick="pick('aud',this,'public')">General public</button>
+      <button class="chip aud" onclick="pick('aud',this,'payer')">Payer / Policy</button>
+    </div>
+  </div>
+  <div class="dim-card">
+    <div class="dim-label b">2 · Communication type</div>
+    <div class="chip-group">
+      <button class="chip com" onclick="pick('com',this,'awareness')">Disease awareness</button>
+      <button class="chip com" onclick="pick('com',this,'launch')">Product launch</button>
+      <button class="chip com" onclick="pick('com',this,'medical')">Medical / MSL</button>
+      <button class="chip com" onclick="pick('com',this,'marketing')">Promotional</button>
+      <button class="chip com" onclick="pick('com',this,'cme')">CME / Education</button>
+      <button class="chip com" onclick="pick('com',this,'policy')">Public health / Policy</button>
+    </div>
+  </div>
+  <div class="dim-card">
+    <div class="dim-label c">3 · Format</div>
+    <div class="chip-group">
+      <button class="chip fmt" onclick="pick('fmt',this,'whitepaper')">White paper</button>
+      <button class="chip fmt" onclick="pick('fmt',this,'infographic')">Infographic</button>
+      <button class="chip fmt" onclick="pick('fmt',this,'video')">Video / Animation</button>
+      <button class="chip fmt" onclick="pick('fmt',this,'carousel')">Carousel / Slides</button>
+      <button class="chip fmt" onclick="pick('fmt',this,'podcast')">Podcast script</button>
+      <button class="chip fmt" onclick="pick('fmt',this,'detailer')">Visual aid / Detailer</button>
+      <button class="chip fmt" onclick="pick('fmt',this,'social')">Social post</button>
+      <button class="chip fmt" onclick="pick('fmt',this,'banner')">Banner / Ad</button>
+    </div>
+  </div>
+  <div class="dim-card">
+    <div class="dim-label d">4 · Market / Geography</div>
+    <div class="chip-group">
+      <button class="chip geo" onclick="pick('geo',this,'india')">India</button>
+      <button class="chip geo" onclick="pick('geo',this,'us')">United States</button>
+      <button class="chip geo" onclick="pick('geo',this,'eu')">Europe</button>
+      <button class="chip geo" onclick="pick('geo',this,'uk')">UK</button>
+      <button class="chip geo" onclick="pick('geo',this,'global')">Global / Multi-market</button>
+      <button class="chip geo" onclick="pick('geo',this,'apac')">APAC (ex-India)</button>
+    </div>
+  </div>
+</div>
+
+<div class="progress">
+  <div class="prog-dot" id="pd-aud"></div>
+  <div class="prog-dot" id="pd-com"></div>
+  <div class="prog-dot" id="pd-fmt"></div>
+  <div class="prog-dot" id="pd-geo"></div>
+  <span class="prog-label" id="prog-label">Select all 4 dimensions</span>
+</div>
+
+<div class="output" id="output">
+  <div class="out-placeholder">Select one option from each of the four dimensions to generate your full strategy and MLR brief.</div>
+</div>
+
+<script>
+const sel = { aud: null, com: null, fmt: null, geo: null };
+
+function pick(dim, el, val) {
+  document.querySelectorAll('.chip.' + dim).forEach(c => c.classList.remove('sel'));
+  el.classList.add('sel');
+  sel[dim] = val;
+  ['aud','com','fmt','geo'].forEach(d => {
+    document.getElementById('pd-' + d).classList.toggle('done', !!sel[d]);
+  });
+  const done = ['aud','com','fmt','geo'].filter(d => sel[d]).length;
+  document.getElementById('prog-label').textContent = done === 4
+    ? 'All dimensions selected — brief ready'
+    : done + ' of 4 selected';
+  render();
+}
+
+const GEO = {
+  india: { reg: 'CDSCO (cdsco.gov.in)', label: 'Schedule H/H1 prescribing info + CDSCO dossier', epi: ['ICMR', 'NCDIR', 'NFHS', 'NPCDCS'], gl: ['API', 'CSI', 'RSSDI', 'IndiaClen'], note: 'Prioritise Indian RCT/bridging study data. CDSCO label governs all claims.', restrict: 'DTC prescription drug advertising prohibited. Patient content = disease awareness only.' },
+  us:    { reg: 'FDA / OPDP', label: 'FDA-approved PI + Medication Guide', epi: ['CDC', 'SEER', 'AHA stats', 'NHANES'], gl: ['AHA/ACC', 'ADA', 'NCCN/ASCO', 'ASH'], note: 'FDA label is the legal ceiling. OPDP governs all promotional materials. Fair balance mandatory.', restrict: 'DTC allowed but heavily regulated. Every promotional piece needs full ISI block.' },
+  eu:    { reg: 'EMA + national competent authorities', label: 'EMA Summary of Product Characteristics (SmPC)', epi: ['ECDC', 'Eurostat', 'EuroHeart', 'ESMO epi'], gl: ['ESC', 'ESMO', 'EASD', 'EULAR'], note: 'SmPC governs — not the FDA PI. Always confirm local SmPC; indications may differ from FDA.', restrict: 'DTC prescription drug advertising banned across EU. GDPR applies to all digital data collection.' },
+  uk:    { reg: 'MHRA + NICE', label: 'UK SmPC (post-Brexit, separate from EMA)', epi: ['NHS Digital', 'Cancer Research UK', 'BHF stats', 'ONS'], gl: ['NICE', 'SIGN', 'BNF', 'RCGP/RCP'], note: 'UK SmPC may diverge from EMA post-Brexit. NICE appraisal drives NHS reimbursement positioning.', restrict: 'ABPI Code governs all promotion. No DTC. All materials certified by registered HCP.' },
+  global: { reg: 'Most conservative market in distribution set', label: 'Build claims grid — map each claim to each market label', epi: ['WHO GHO', 'GBD/IHME', 'Lancet global studies'], gl: ['WHO', 'ISH', 'IDF', 'UICC'], note: 'Design to the most restrictive market ceiling. Claims grid is mandatory for global content.', restrict: 'DTC restrictions vary by country. Mark all claims with market applicability.' },
+  apac:  { reg: 'Varies — TGA (AU), HSA (SG), PMDA (JP)', label: 'Local registration dossier per country', epi: ['WHO WPRO', 'APCO', 'Country MOH data'], gl: ['Local societies', 'WHO baseline', 'JSPE', 'CSANZ'], note: 'Highly heterogeneous. Japanese label (PMDA) typically most conservative. Country adaptation is standard.', restrict: 'Most APAC markets prohibit DTC. Japan/South Korea/Australia have strict promotional codes.' }
+};
+
+const EVIDENCE = {
+  hcp: {
+    launch:    ['Pivotal Phase III RCT (PubMed/EMBASE)', 'Regulatory label for market', 'Mechanism: primary publication', 'Specialty guideline context'],
+    medical:   ['Full clinical dossier', 'Cochrane comparative safety', 'ClinicalTrials.gov protocol', 'Subgroup & post-hoc analyses'],
+    marketing: ['Approved label claims only', 'Pivotal trial headline data', 'Guideline positioning'],
+    cme:       ['Cochrane systematic reviews', 'NMA comparing drug class', 'Multiple RCTs', 'Market-specific guideline body'],
+    awareness: ['Disease burden: WHO/NIH + local epi', 'Treatment gap data'],
+    policy:    ['Health economics (EMBASE)', 'Real-world evidence', 'WHO/NICE burden data']
+  },
+  patient: {
+    launch:    ['Approved label (plain language)', 'WHO/NIH patient summaries', 'Local health authority patient guide'],
+    medical:   ['Regulatory label only', 'NIH MedlinePlus', 'Cochrane plain summaries'],
+    marketing: ['Regulatory label (approved claims only)', 'No primary trial data directly'],
+    cme:       ['Patient education sources only'],
+    awareness: ['WHO/NIH/local epi burden stats', 'Cochrane plain-language summaries'],
+    policy:    ['National health survey data', 'WHO burden estimates']
+  },
+  kol: {
+    launch:    ['Full clinical data package', 'ClinicalTrials.gov full protocol', 'Cochrane comparator landscape', 'Congress data (ASCO/ESC/ADA)'],
+    medical:   ['All trial data inc. subgroups', 'Pharmacovigilance (EMBASE)', 'PROSPERO-registered NMAs'],
+    marketing: ['Scientific publications', 'Congress presentations'],
+    cme:       ['Cochrane, NMAs, all RCTs in class'],
+    awareness: ['Epidemiology: local registries + GBD', 'Unmet need publications'],
+    policy:    ['HEOR studies', 'Budget impact models', 'Real-world outcomes']
+  },
+  public: {
+    launch:    ['WHO/NIH plain summaries', 'Regulatory approval announcement'],
+    medical:   ['Not applicable'],
+    marketing: ['Regulatory label — no clinical data directly'],
+    cme:       ['Not applicable'],
+    awareness: ['WHO, NIH, local authority burden stats', 'National health surveys'],
+    policy:    ['WHO/govt health data', 'UN/World Bank health indicators']
+  },
+  payer: {
+    launch:    ['HEOR studies', 'Cost-effectiveness models', 'Regulatory label + NMA', 'Real-world adherence data'],
+    medical:   ['Pharmacoeconomics publications', 'Real-world outcomes (EMBASE)'],
+    marketing: ['Budget impact evidence', 'Comparative effectiveness RCTs'],
+    cme:       ['Not standard for payer audience'],
+    awareness: ['Burden of illness studies', 'Local epi + WHO'],
+    policy:    ['HTA body reports (NICE/HTAi)', 'Budget impact models']
+  }
+};
+
+const TONE = {
+  hcp:     'Clinical, precise, evidence-anchored. Cite study names, p-values, confidence intervals. HCPs expect statistical rigour.',
+  patient: 'Plain language (≤8th grade reading level). Empathetic, action-oriented. No jargon. Focus on "what this means for you."',
+  kol:     'Peer-to-peer. Scientific depth, hypothesis-driven, acknowledge limitations openly. Data transparency is credibility.',
+  public:  'Simple, trustworthy, non-alarmist. Lead with relevance. Avoid brand names. Use analogies.',
+  payer:   'Outcomes-focused, economic framing. Budget impact, QALY, cost-per-outcome. Real-world effectiveness over efficacy alone.'
+};
+
+const AVOID = {
+  hcp: {
+    launch:    ['Off-label claims', 'Unpublished data without NDA cover', 'Superlatives without citation'],
+    medical:   ['Promotional tone', 'Unapproved indications', 'Cherry-picked subgroups without context'],
+    marketing: ['Off-label claims', 'Data not in approved label', 'Comparative claims without head-to-head data'],
+    cme:       ['Brand-led framing — must show full class data', 'Promotional intent'],
+    awareness: ['Brand mentions', 'Unverified statistics'],
+    policy:    ['Anecdotal evidence', 'Non-peer-reviewed sources']
+  },
+  patient: {
+    launch:    ['Clinical stats without explanation', 'Brand claims beyond label', 'Fear-based messaging'],
+    medical:   ['Trial data without plain-language context'],
+    marketing: ['Off-label implications', 'Statistical data without meaning'],
+    cme:       ['N/A — use patient education framing'],
+    awareness: ['Stigmatising language', 'Unverified prevalence numbers'],
+    policy:    ['Jargon', 'Scary statistics without context']
+  },
+  kol: {
+    launch:    ['Withholding unfavourable data', 'Unapproved promotion dressed as science'],
+    medical:   ['Endpoints not pre-registered', 'Suppressed comparator data'],
+    marketing: ['Scientific bias toward sponsor drug'],
+    cme:       ['Single-sponsor bias'],
+    awareness: ['Unverified epidemiology'],
+    policy:    ['Non-validated economic models']
+  },
+  public: {
+    launch:    ['Medical claims', 'Brand promotion'],
+    medical:   ['N/A'],
+    marketing: ['Prescription drug promotion (prohibited in most markets)'],
+    cme:       ['N/A'],
+    awareness: ['Alarmist statistics without context', 'Scientific jargon'],
+    policy:    ['Brand association', 'Medical jargon']
+  },
+  payer: {
+    launch:    ['Efficacy-only framing — payers need effectiveness', 'Unvalidated economic models'],
+    medical:   ['Ignoring comparator costs'],
+    marketing: ['Cherry-picked RCT data without RWE'],
+    cme:       ['N/A'],
+    awareness: ['Burden stats without cost context'],
+    policy:    ['Non-HTAi-compliant models']
+  }
+};
+
+const FORMAT_RULES = {
+  whitepaper: { d: 'High. Full methodology, references, limitations. IMRAD structure. Min 8–12 cited sources.', dens: 'Dense but navigable — section headers, summary boxes, 1-page executive summary.' },
+  infographic:{ d: 'Low — 3 to 5 key data points max. Every stat needs a footnote source.', dens: 'One insight per visual zone. No paragraph text.' },
+  video:      { d: 'Medium. Script drives content. Data shown as animated numbers, sourced in the brief.', dens: 'One concept per scene. 90-sec max for patient/public. 3–5 min for HCP.' },
+  carousel:   { d: 'Medium. Each slide = one idea. Last slide = source list or CTA.', dens: '5–8 slides. Slide 1: hook. Slides 2–6: evidence. Slides 7–8: action and source.' },
+  podcast:    { d: 'Medium–High. Conversational but evidence-grounded. Host cites source naturally.', dens: 'Narrative arc. Avoid complex stats without context — listener cannot rewind.' },
+  detailer:   { d: 'High clinical rigour. Every claim = approved reference. MLR-reviewable.', dens: 'Unmet need → mechanism → efficacy → safety → positioning.' },
+  social:     { d: 'Minimal. One stat, one idea, one CTA. Source in caption or swipe.', dens: 'Caption ≤150 words. No clinical claims without full approved context.' },
+  banner:     { d: 'Lowest. Headline + image + CTA only. All claims must be approvable.', dens: 'Zero clinical data in the visual. Drive to a landing page for evidence.' }
+};
+
+const AUD_L  = { hcp: 'HCP', patient: 'Patient', kol: 'KOL / Researcher', public: 'General public', payer: 'Payer / Policy' };
+const COM_L  = { awareness: 'Disease awareness', launch: 'Product launch', medical: 'Medical / MSL', marketing: 'Promotional', cme: 'CME / Education', policy: 'Public health / Policy' };
+const FMT_L  = { whitepaper: 'White paper', infographic: 'Infographic', video: 'Video', carousel: 'Carousel', podcast: 'Podcast script', detailer: 'Detailer', social: 'Social post', banner: 'Banner / Ad' };
+const GEO_L  = { india: 'India', us: 'United States', eu: 'Europe', uk: 'UK', global: 'Global', apac: 'APAC' };
+
+function getMLR(aud, com, fmt, geo) {
+  let score = 0;
+  score += ({ hcp: 2, kol: 1, patient: 3, public: 2, payer: 2 }[aud] || 0);
+  score += ({ marketing: 4, launch: 4, medical: 2, awareness: 2, cme: 2, policy: 1 }[com] || 0);
+  score += ({ banner: 3, social: 3, detailer: 3, video: 2, carousel: 2, infographic: 2, whitepaper: 1, podcast: 1 }[fmt] || 0);
+  score *= ({ us: 1.2, eu: 1.1, uk: 1.1, india: 1.0, global: 1.3, apac: 1.0 }[geo] || 1);
+  if (score >= 10) return { level: 4, label: 'Very high', desc: 'Full MLR panel review required before any distribution' };
+  if (score >= 7)  return { level: 3, label: 'High',      desc: 'Medical + Legal + Regulatory sign-off mandatory' };
+  if (score >= 4)  return { level: 2, label: 'Moderate',  desc: 'Medical + Regulatory sign-off required; Legal advisory' };
+  return                   { level: 1, label: 'Low',       desc: 'Medical review sufficient; Regulatory spot-check' };
+}
+
+function getSignoffs(aud, com, fmt, geo) {
+  const isPromo  = com === 'marketing' || com === 'launch';
+  const isPatient= aud === 'patient'   || aud === 'public';
+  const isHRFmt  = fmt === 'banner'    || fmt === 'social' || fmt === 'detailer';
+  const isGlobal = geo === 'global';
+  return [
+    { role: 'Medical Affairs',     status: 'req', note: 'Reviews evidence accuracy and scientific integrity' },
+    { role: 'Regulatory Affairs',  status: 'req', note: 'Verifies all claims are within the approved label' },
+    { role: 'Legal / Compliance',  status: isPromo || isHRFmt || isGlobal ? 'req' : 'opt', note: isPromo ? 'Mandatory for promotional and launch materials' : 'Advisory; mandatory if comparative claims present' },
+    { role: 'Marketing',           status: isPromo ? 'req' : 'opt', note: 'Reviews for brand consistency and promotional intent' },
+    { role: 'Drug Safety / PV',    status: isPatient || isPromo ? 'opt' : 'na',  note: 'Required if safety claims or AE data are mentioned' },
+    { role: 'Market Access',       status: aud === 'payer' || com === 'policy' ? 'req' : 'na', note: 'Required for payer-facing and health economics content' },
+    { role: 'Multi-country MLR',   status: isGlobal ? 'req' : 'na', note: 'Each market needs local regulatory sign-off for global pieces' }
+  ];
+}
+
+function getRounds(aud, com, geo) {
+  if ((com === 'marketing' || com === 'launch') && geo === 'us') return 4;
+  if (com === 'marketing' || com === 'launch') return 3;
+  if (geo === 'global') return 4;
+  return 2;
+}
+
+function getTriggers(aud, com, fmt, geo) {
+  const t = [];
+  if (com === 'marketing' || com === 'launch') t.push({ type: 'req',  text: 'Comparative claims require head-to-head RCT data — class comparisons need an NMA' });
+  if (aud === 'patient' && ['india','eu','uk','apac'].includes(geo)) t.push({ type: 'req', text: 'Brand-linked patient content likely non-compliant in this market — disease awareness framing required' });
+  if (fmt === 'social' || fmt === 'banner') t.push({ type: 'warn', text: 'Digital formats often need a separate digital review track — confirm with your MLR SOP' });
+  if (geo === 'global') t.push({ type: 'req', text: 'Claims grid required — map each claim to each market\'s regulatory status before MLR submission' });
+  if (com === 'cme') t.push({ type: 'warn', text: 'CME content must declare educational grant source; sponsor cannot control content or speaker selection' });
+  if (aud === 'kol' && com === 'medical') t.push({ type: 'ok',  text: 'Scientific exchange is exempt from promotional MLR in most markets — document the exchange formally' });
+  if (fmt === 'video' || fmt === 'podcast') t.push({ type: 'warn', text: 'Audio/visual formats need script + storyboard submitted together in the first MLR round' });
+  if (geo === 'us' && com === 'marketing') t.push({ type: 'req', text: 'OPDP fair balance mandatory — ISI must appear with equivalent prominence to efficacy claims' });
+  if (!t.length) t.push({ type: 'ok', text: 'No high-risk triggers detected for this combination — standard MLR process applies' });
+  return t;
+}
+
+function bars(level) {
+  return [1,2,3,4].map(i => `<div class="mlr-seg${i <= level ? ' lit' : ''}"></div>`).join('');
+}
+
+function render() {
+  const { aud, com, fmt, geo } = sel;
+  const out = document.getElementById('output');
+  if (!aud || !com || !fmt || !geo) {
+    out.innerHTML = '<div class="out-placeholder">Select one option from each of the four dimensions to generate your full strategy and MLR brief.</div>';
+    return;
+  }
+
+  const ev       = (EVIDENCE[aud] && EVIDENCE[aud][com]) || ['Follow regulatory guidance for this combination'];
+  const tone     = TONE[aud] || '';
+  const avoidRaw = AVOID[aud];
+  const avoidList= typeof avoidRaw === 'object' && !Array.isArray(avoidRaw) ? (avoidRaw[com] || []) : [];
+  const fmtD     = FORMAT_RULES[fmt] || { d: 'Match to audience.', dens: 'Adapt to channel.' };
+  const geoD     = GEO[geo];
+  const mlr      = getMLR(aud, com, fmt, geo);
+  const signoffs = getSignoffs(aud, com, fmt, geo);
+  const rounds   = getRounds(aud, com, geo);
+  const triggers = getTriggers(aud, com, fmt, geo);
+
+  const roundDots = [1,2,3,4].map(i => `<div class="round-dot${i <= rounds ? ' active' : ''}"></div>`).join('');
+
+  const signoffHTML = signoffs.map(s => `
+    <div class="signoff-row-item">
+      <span class="badge ${s.status}">${s.status === 'req' ? 'Required' : s.status === 'opt' ? 'Advisory' : 'N/A'}</span>
+      <div><div class="role-name">${s.role}</div><div class="role-note">${s.note}</div></div>
+    </div>`).join('');
+
+  out.innerHTML = `
+    <div class="crumb">
+      <span class="a">${AUD_L[aud]}</span> ×
+      <span class="b">${COM_L[com]}</span> ×
+      <span class="c">${FMT_L[fmt]}</span> ×
+      <span class="d">${GEO_L[geo]}</span>
+    </div>
+    <div class="grid-2">
+      <div class="ob ev">
+        <div class="ob-h ev">Evidence sources</div>
+        <div class="ob-body"><ul>${ev.map(e => `<li>${e}</li>`).join('')}</ul></div>
+      </div>
+      <div class="ob ge">
+        <div class="ob-h ge">Market: ${GEO_L[geo]}</div>
+        <div class="ob-body">
+          <strong>Regulator:</strong> ${geoD.reg}<br>
+          <strong>Label:</strong> ${geoD.label}<br>
+          <strong>Local epi:</strong> ${geoD.epi.join(', ')}<br>
+          <strong>Guidelines:</strong> ${geoD.gl.join(', ')}<br><br>
+          <em>${geoD.note}</em><br><br>
+          <span style="color:var(--warning-text);font-size:11px">${geoD.restrict}</span>
+        </div>
+      </div>
+    </div>
+    <div class="grid-3">
+      <div class="ob tn">
+        <div class="ob-h tn">Tone & language</div>
+        <div class="ob-body">${tone}</div>
+      </div>
+      <div class="ob av">
+        <div class="ob-h av">What to avoid</div>
+        <div class="ob-body"><ul>${avoidList.length ? avoidList.map(a => `<li>${a}</li>`).join('') : '<li>Follow standard MLR guidance.</li>'}</ul></div>
+      </div>
+      <div class="ob fm">
+        <div class="ob-h fm">Format: ${FMT_L[fmt]}</div>
+        <div class="ob-body">
+          <strong>Depth:</strong> ${fmtD.d}<br><br>
+          <strong>Density:</strong> ${fmtD.dens}
+        </div>
+      </div>
+    </div>
+    <div class="divider">MLR & sign-off requirements</div>
+    <div class="grid-2">
+      <div>
+        <div class="ob mlr" style="margin-bottom:10px">
+          <div class="ob-h mlr">Review complexity</div>
+          <div class="mlr-bar">${bars(mlr.level)}</div>
+          <div class="complexity-label">${mlr.label}</div>
+          <div class="complexity-sub">${mlr.desc}</div>
+          <div style="margin-top:10px">
+            <div class="ob-h mlr" style="margin-bottom:4px">Estimated review rounds</div>
+            <div class="rounds-row">${roundDots}<span class="rounds-label">${rounds} round${rounds > 1 ? 's' : ''} typical</span></div>
+          </div>
+        </div>
+        <div class="ob mlr">
+          <div class="ob-h mlr" style="margin-bottom:6px">Key triggers & flags</div>
+          ${triggers.map(t => `<span class="trigger ${t.type}">${t.type === 'req' ? '⚑ ' : t.type === 'warn' ? '⚠ ' : '✓ '}${t.text}</span>`).join('')}
+        </div>
+      </div>
+      <div class="ob mlr">
+        <div class="ob-h mlr" style="margin-bottom:6px">Who must sign off</div>
+        ${signoffHTML}
+      </div>
+    </div>`;
+}
+</script>
+</body>
+</html>

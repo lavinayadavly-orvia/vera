@@ -121,6 +121,22 @@ export function buildEvidenceDossier(
   namespace: ApiNamespace,
 ): EvidenceDossier {
   const sourceDocuments = (sources || []).map((source, index) => toReferenceDocument(source, index));
+  if (sourceDocuments.length === 0) {
+    return {
+      dossierId: `dossier_${Date.now()}`,
+      namespace,
+      createdAt: new Date().toISOString(),
+      granularity: 'sentence',
+      sourceDocuments: [],
+      claims: [],
+      edges: [],
+      completeness: 'draft',
+      mappingCoverage: 0,
+      locatorCoverage: 0,
+      hoverHint: 'No screened sources were captured for this output yet. Add source search credentials or upload approved references to build the dossier.',
+    };
+  }
+
   const claimTexts = collectCandidateClaims(content);
 
   const claims: ClaimNode[] = claimTexts.map((claimText, index) => {
