@@ -1,4 +1,5 @@
 import '../lib/load-env.mjs';
+import { generateGammaArtifact, getGammaRuntimeSettings, isGammaConfigured } from './gamma.mjs';
 
 const PRESENTATION_PROVIDER = String(process.env.PRESENTATION_PROVIDER || process.env.VITE_PRESENTATION_PROVIDER || 'native')
   .trim()
@@ -11,9 +12,6 @@ const PLUS_AI_TEXT_HANDLING = String(process.env.PLUS_AI_TEXT_HANDLING || 'PRESE
 const PLUS_AI_POLL_INTERVAL_MS = Number.parseInt(process.env.PLUS_AI_POLL_INTERVAL_MS || '5000', 10);
 const PLUS_AI_TIMEOUT_MS = Number.parseInt(process.env.PLUS_AI_TIMEOUT_MS || '300000', 10);
 const PLUS_AI_INCLUDE_USER_TIPS = String(process.env.PLUS_AI_INCLUDE_USER_TIPS || 'false').trim().toLowerCase() === 'true';
-const GAMMA_API_KEY = (process.env.GAMMA_API_KEY || '').trim();
-const GAMMA_BASE_URL = (process.env.GAMMA_BASE_URL || 'https://public-api.gamma.app/v1.0').trim();
-
 function getSelectedPresentationProvider() {
   if (PRESENTATION_PROVIDER === 'plus-ai') return 'plus-ai';
   if (PRESENTATION_PROVIDER === 'gamma') return 'gamma';
@@ -134,42 +132,66 @@ async function downloadPresentationBinary(url) {
 
 export async function tryRenderPresentationExternally({ request, markdown }) {
   const selected = getSelectedPresentationProvider();
-  if (selected !== 'plus-ai' || !PLUS_AI_API_KEY) {
-    return null;
+  if (selected === 'plus-ai') {
+    if (!PLUS_AI_API_KEY) {
+      return null;
+    }
+
+    const payload = {
+      prompt: buildPlusAiPrompt({ request, markdown }),
+      language: PLUS_AI_LANGUAGE,
+      includeUserTips: PLUS_AI_INCLUDE_USER_TIPS,
+      textHandling: getNormalisedTextHandling(),
+    };
+
+    const numberOfSlides = inferSlideCount(markdown);
+    if (numberOfSlides) {
+      payload.numberOfSlides = numberOfSlides;
+    }
+
+    if (PLUS_AI_TEMPLATE_ID) {
+      payload.templateId = PLUS_AI_TEMPLATE_ID;
+    }
+
+    const created = await createPlusAiPresentation(payload);
+    const pollingUrl = created.pollingUrl || (created.id ? `${PLUS_AI_API_BASE_URL}/presentation/${created.id}` : '');
+    if (!pollingUrl) {
+      throw new Error('Plus AI did not return a polling URL for the presentation request.');
+    }
+
+    const result = await pollPlusAiPresentation(pollingUrl);
+    const binary = await downloadPresentationBinary(result.url);
+
+    return {
+      provider: 'plus-ai',
+      binary,
+      remoteUrl: result.url,
+      generationId: result.id || created.id || null,
+      slideTitles: Array.isArray(result.slides) ? result.slides : [],
+    };
   }
 
-  const payload = {
-    prompt: buildPlusAiPrompt({ request, markdown }),
-    language: PLUS_AI_LANGUAGE,
-    includeUserTips: PLUS_AI_INCLUDE_USER_TIPS,
-    textHandling: getNormalisedTextHandling(),
-  };
+  if (selected === 'gamma' && isGammaConfigured()) {
+    const slideCount = inferSlideCount(markdown);
+    const gammaInput = stripMarkdownFence(markdown)
+      .replace(/^###\s*/gm, '---\n')
+      .trim();
 
-  const numberOfSlides = inferSlideCount(markdown);
-  if (numberOfSlides) {
-    payload.numberOfSlides = numberOfSlides;
+    return generateGammaArtifact({
+      inputText: gammaInput,
+      format: 'presentation',
+      exportAs: 'pptx',
+      numCards: slideCount,
+      dimensions: '16:9',
+      additionalInstructions: [
+        'Keep the slide structure clean and presentation-ready.',
+        'Preserve the factual wording from the source text.',
+        'Do not invent claims, citations, or metrics beyond the provided content.',
+      ].join(' '),
+    });
   }
 
-  if (PLUS_AI_TEMPLATE_ID) {
-    payload.templateId = PLUS_AI_TEMPLATE_ID;
-  }
-
-  const created = await createPlusAiPresentation(payload);
-  const pollingUrl = created.pollingUrl || (created.id ? `${PLUS_AI_API_BASE_URL}/presentation/${created.id}` : '');
-  if (!pollingUrl) {
-    throw new Error('Plus AI did not return a polling URL for the presentation request.');
-  }
-
-  const result = await pollPlusAiPresentation(pollingUrl);
-  const binary = await downloadPresentationBinary(result.url);
-
-  return {
-    provider: 'plus-ai',
-    binary,
-    remoteUrl: result.url,
-    generationId: result.id || created.id || null,
-    slideTitles: Array.isArray(result.slides) ? result.slides : [],
-  };
+  return null;
 }
 
 export function getPresentationProviderState() {
@@ -189,14 +211,15 @@ export function getPresentationProviderState() {
   }
 
   if (selected === 'gamma') {
+    const gamma = getGammaRuntimeSettings();
     return {
       selected,
-      active: 'native',
+      active: isGammaConfigured() ? 'gamma' : 'native',
       label: getProviderLabel(selected),
-      configured: Boolean(GAMMA_API_KEY),
-      baseUrl: GAMMA_BASE_URL,
-      note: GAMMA_API_KEY
-        ? 'Gamma routing is configured. Vera still falls back to native PPTX rendering until the external adapter is enabled.'
+      configured: gamma.configured,
+      baseUrl: gamma.baseUrl,
+      note: gamma.configured
+        ? 'Gamma presentation rendering is enabled. Vera falls back to native PPTX only if the provider run fails.'
         : 'Gamma is selected, but GAMMA_API_KEY is missing. Vera uses the native PPTX renderer.',
     };
   }

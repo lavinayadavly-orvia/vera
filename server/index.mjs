@@ -7,6 +7,7 @@ import { createRuntimeStore } from './lib/store.mjs';
 import { createAssetManager } from './lib/assets.mjs';
 import { packageServerOutputAssets } from './lib/output-packagers.mjs';
 import { getFormatCapabilityMap, getProviderRegistrySummary } from './providers/registry.mjs';
+import { checkSearchProviderConnection } from './providers/search.mjs';
 import { generatePromptOptions } from './services/prompt-options.mjs';
 import { generateOutputOnServer, supportsServerSideGeneration } from './services/generate-output.mjs';
 
@@ -233,6 +234,12 @@ async function handleProviders(response) {
   });
 }
 
+async function handleSourceHealth(url, response) {
+  const query = url.searchParams.get('q') || undefined;
+  const result = await checkSearchProviderConnection(query);
+  sendJson(response, result.ok ? 200 : 503, result);
+}
+
 async function handleCreateGeneration(request, response) {
   const body = await readJsonBody(request);
   const generationRequest = body?.request;
@@ -289,13 +296,24 @@ async function handleListSnapshots(url, response) {
   });
 }
 
-async function handleGetAsset(assetId, method, response) {
+function sanitizeDownloadName(value) {
+  return String(value || 'vera-asset')
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 120) || 'vera-asset';
+}
+
+async function handleGetAsset(assetId, method, response, options = {}) {
   try {
     const asset = await assetManager.readAsset(assetId);
-    response.writeHead(200, {
+    const headers = {
       'content-type': asset.contentType,
       ...corsHeaders(),
-    });
+    };
+    if (options.download) {
+      headers['content-disposition'] = `attachment; filename="${sanitizeDownloadName(assetId)}"`;
+    }
+    response.writeHead(200, headers);
     if (method === 'HEAD') {
       response.end();
       return;
@@ -410,6 +428,11 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
+    if (request.method === 'GET' && path === '/api/source-health') {
+      await handleSourceHealth(url, response);
+      return;
+    }
+
     if (request.method === 'POST' && path === '/api/generations') {
       await handleCreateGeneration(request, response);
       return;
@@ -427,6 +450,12 @@ const server = http.createServer(async (request, response) => {
 
     if (request.method === 'GET' && path === '/api/snapshots') {
       await handleListSnapshots(url, response);
+      return;
+    }
+
+    const assetDownloadMatch = path.match(/^\/api\/assets\/([^/]+)\/download$/);
+    if ((request.method === 'GET' || request.method === 'HEAD') && assetDownloadMatch) {
+      await handleGetAsset(assetDownloadMatch[1], request.method, response, { download: true });
       return;
     }
 

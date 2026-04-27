@@ -8,6 +8,10 @@ function normaliseUrl(url?: string | null): string | null {
 }
 
 export function getHostedFinalDeliverableUrl(output: GeneratedOutput): string | null {
+  if (output.contentType === 'infographic' && output.pdfUrl) {
+    return normaliseUrl(output.pdfUrl);
+  }
+
   if (output.contentType === 'video') {
     return normaliseUrl(output.renderedVideoUrl) || (output.format === 'mp4' ? normaliseUrl(output.downloadUrl) : null);
   }

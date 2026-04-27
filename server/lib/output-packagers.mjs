@@ -1,4 +1,5 @@
 import PptxGenJS from 'pptxgenjs';
+import { renderHtmlToPdfBuffer } from './render-html-pdf.mjs';
 
 function escapeHtml(value) {
   return String(value || '')
@@ -303,6 +304,183 @@ function buildDocumentHtml(output) {
 </html>`;
 }
 
+function buildVideoStoryboardHtml(output) {
+  const scenes = Array.isArray(output.videoScenes) ? output.videoScenes : [];
+  const title = escapeHtml(output.theme || output.videoPackage?.title || 'Vera Video Package');
+  const aspect = escapeHtml(output.videoPackage?.aspectRatio || '16:9');
+  const runtime = escapeHtml(output.videoPackage?.totalDuration ? `${output.videoPackage.totalDuration}s` : 'Runtime planned');
+  const renderStatus = output.renderedVideoUrl
+    ? 'Rendered MP4 available'
+    : 'Native storyboard and narration package';
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${title}</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #06191d;
+      color: #f7fffd;
+    }
+    .wrap {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 44px 28px 72px;
+    }
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 24px;
+      align-items: end;
+      margin-bottom: 30px;
+      border-bottom: 1px solid rgba(199,251,245,0.18);
+      padding-bottom: 24px;
+    }
+    .brand {
+      color: #9cf8e8;
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0.34em;
+      margin-bottom: 14px;
+    }
+    h1 {
+      margin: 0;
+      max-width: 820px;
+      font-size: clamp(36px, 6vw, 78px);
+      line-height: 0.94;
+      letter-spacing: -0.06em;
+    }
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 18px;
+    }
+    .pill {
+      border: 1px solid rgba(199,251,245,0.22);
+      border-radius: 999px;
+      background: rgba(255,255,255,0.06);
+      padding: 8px 12px;
+      color: rgba(247,255,253,0.76);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .audio {
+      min-width: min(360px, 100%);
+      border: 1px solid rgba(255,122,43,0.38);
+      border-radius: 22px;
+      background: rgba(255,122,43,0.09);
+      padding: 16px;
+    }
+    .audio strong {
+      display: block;
+      color: #ffb076;
+      margin-bottom: 10px;
+    }
+    audio { width: 100%; }
+    .grid {
+      display: grid;
+      gap: 22px;
+    }
+    .scene {
+      display: grid;
+      grid-template-columns: minmax(0, 1.08fr) minmax(340px, 0.92fr);
+      overflow: hidden;
+      border: 1px solid rgba(199,251,245,0.18);
+      border-radius: 32px;
+      background: rgba(255,255,255,0.045);
+      box-shadow: 0 28px 80px rgba(0,0,0,0.22);
+    }
+    .scene img {
+      display: block;
+      width: 100%;
+      min-height: 340px;
+      height: 100%;
+      object-fit: cover;
+      background: #021012;
+    }
+    .copy {
+      padding: 28px;
+    }
+    .copy h2 {
+      margin: 0 0 12px;
+      color: #fff;
+      font-size: 28px;
+      line-height: 1.05;
+      letter-spacing: -0.03em;
+    }
+    .eyebrow {
+      margin-bottom: 14px;
+      color: #ff8b48;
+      font-size: 12px;
+      font-weight: 900;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+    .field {
+      margin-top: 16px;
+    }
+    .field strong {
+      display: block;
+      margin-bottom: 5px;
+      color: #9cf8e8;
+      font-size: 11px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+    .field span {
+      color: rgba(247,255,253,0.8);
+      line-height: 1.55;
+    }
+    @media (max-width: 880px) {
+      .hero,
+      .scene {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="hero">
+      <div>
+        <div class="brand">VERA VIDEO SYSTEM</div>
+        <h1>${title}</h1>
+        <div class="meta">
+          <span class="pill">${aspect}</span>
+          <span class="pill">${runtime}</span>
+          <span class="pill">${escapeHtml(renderStatus)}</span>
+          <span class="pill">${scenes.length} scenes</span>
+        </div>
+      </div>
+      ${output.audioUrl ? `<div class="audio"><strong>Narration track</strong><audio controls src="${escapeHtml(output.audioUrl)}"></audio></div>` : ''}
+    </section>
+    <section class="grid">
+      ${scenes.map((scene) => `
+        <article class="scene">
+          <img src="${escapeHtml(scene.imageUrl || output.videoThumbnail || '')}" alt="Scene ${escapeHtml(scene.sceneNumber)} frame" />
+          <div class="copy">
+            <div class="eyebrow">Scene ${escapeHtml(scene.sceneNumber)} · ${escapeHtml(scene.duration || 5)}s · ${escapeHtml(scene.beatRole || 'proof')}</div>
+            <h2>${escapeHtml(scene.sceneTitle || scene.onScreenText || `Scene ${scene.sceneNumber}`)}</h2>
+            <div class="field"><strong>Visual direction</strong><span>${escapeHtml(scene.visualDescription || '')}</span></div>
+            <div class="field"><strong>On-screen text</strong><span>${escapeHtml(scene.onScreenText || 'No on-screen text')}</span></div>
+            <div class="field"><strong>Voiceover</strong><span>${escapeHtml(scene.voiceoverText || '')}</span></div>
+            <div class="field"><strong>Motion</strong><span>${escapeHtml(scene.motionCue || 'Subtle editorial motion')}</span></div>
+            <div class="field"><strong>Transition</strong><span>${escapeHtml(scene.transition || 'Cut')}</span></div>
+          </div>
+        </article>
+      `).join('')}
+    </section>
+  </main>
+</body>
+</html>`;
+}
+
 function addPresentationChrome(slide, title, slideNumber, totalSlides) {
   slide.addShape('rect', {
     x: 0,
@@ -603,6 +781,84 @@ export async function packageServerOutputAssets(output, assetManager) {
     }
   }
 
+  if (typeof nextOutput.videoThumbnail === 'string' && nextOutput.videoThumbnail.startsWith('data:image/')) {
+    const originalThumbnail = nextOutput.videoThumbnail;
+    const thumbnailAsset = await assetManager.saveDataUrlAsset(originalThumbnail);
+    nextOutput.videoThumbnail = thumbnailAsset.url;
+    if (nextOutput.previewUrl === originalThumbnail) {
+      nextOutput.previewUrl = thumbnailAsset.url;
+    }
+  }
+
+  if (typeof nextOutput.previewUrl === 'string' && nextOutput.previewUrl.startsWith('data:image/')) {
+    const previewAsset = await assetManager.saveDataUrlAsset(nextOutput.previewUrl);
+    nextOutput.previewUrl = previewAsset.url;
+  }
+
+  if (Array.isArray(nextOutput.videoScenes)) {
+    const persistedScenes = [];
+    for (const scene of nextOutput.videoScenes) {
+      if (typeof scene.imageUrl === 'string' && scene.imageUrl.startsWith('data:image/')) {
+        const sceneAsset = await assetManager.saveDataUrlAsset(scene.imageUrl);
+        persistedScenes.push({
+          ...scene,
+          imageUrl: sceneAsset.url,
+        });
+      } else {
+        persistedScenes.push(scene);
+      }
+    }
+    nextOutput.videoScenes = persistedScenes;
+  }
+
+  if (nextOutput.__videoBinary) {
+    const videoAsset = await assetManager.saveBinaryAsset({
+      extension: nextOutput.__videoExtension || 'mp4',
+      body: nextOutput.__videoBinary,
+    });
+    nextOutput.renderedVideoUrl = videoAsset.url;
+    nextOutput.downloadUrl = videoAsset.url;
+    delete nextOutput.__videoBinary;
+    delete nextOutput.__videoExtension;
+  }
+
+  if (nextOutput.contentType === 'video') {
+    const storyboardAsset = await assetManager.saveTextAsset({
+      extension: 'html',
+      body: buildVideoStoryboardHtml(nextOutput),
+    });
+    if (!nextOutput.previewUrl) {
+      nextOutput.previewUrl = nextOutput.videoThumbnail || storyboardAsset.url;
+    }
+    if (nextOutput.downloadUrl === '#' || !nextOutput.downloadUrl) {
+      nextOutput.downloadUrl = storyboardAsset.url;
+    }
+    delete nextOutput.__videoBinary;
+    delete nextOutput.__videoExtension;
+    return nextOutput;
+  }
+
+  if (nextOutput.__documentBinary) {
+    const documentAsset = await assetManager.saveBinaryAsset({
+      extension: nextOutput.__documentExtension || 'pdf',
+      body: nextOutput.__documentBinary,
+    });
+    nextOutput.downloadUrl = documentAsset.url;
+    delete nextOutput.__documentBinary;
+    delete nextOutput.__documentExtension;
+  }
+
+  if (nextOutput.__designBinary) {
+    const designAsset = await assetManager.saveBinaryAsset({
+      extension: nextOutput.__designExtension || 'png',
+      body: nextOutput.__designBinary,
+    });
+    nextOutput.previewUrl = designAsset.url;
+    nextOutput.downloadUrl = designAsset.url;
+    delete nextOutput.__designBinary;
+    delete nextOutput.__designExtension;
+  }
+
   if (nextOutput.contentType === 'presentation') {
     const previewAsset = await assetManager.saveTextAsset({
       extension: 'html',
@@ -643,7 +899,9 @@ export async function packageServerOutputAssets(output, assetManager) {
       extension: 'html',
       body: buildDocumentHtml(nextOutput),
     });
-    nextOutput.previewUrl = htmlAsset.url;
+    if (!nextOutput.previewUrl) {
+      nextOutput.previewUrl = htmlAsset.url;
+    }
     if (nextOutput.downloadUrl === '#' || !nextOutput.downloadUrl) {
       nextOutput.downloadUrl = htmlAsset.url;
     }
@@ -651,12 +909,23 @@ export async function packageServerOutputAssets(output, assetManager) {
   }
 
   if (nextOutput.contentType === 'infographic' && nextOutput.format === 'html' && typeof nextOutput.content === 'string') {
-    const asset = await assetManager.saveTextAsset({
+    const htmlAsset = await assetManager.saveTextAsset({
       extension: 'html',
       body: nextOutput.content,
     });
-    nextOutput.previewUrl = asset.url;
-    nextOutput.downloadUrl = asset.url;
+    nextOutput.previewUrl = htmlAsset.url;
+
+    const pdfBuffer = await renderHtmlToPdfBuffer(nextOutput.content, nextOutput.theme || 'Vera Infographic');
+    if (pdfBuffer) {
+      const pdfAsset = await assetManager.saveBinaryAsset({
+        extension: 'pdf',
+        body: pdfBuffer,
+      });
+      nextOutput.pdfUrl = pdfAsset.url;
+      nextOutput.downloadUrl = pdfAsset.url;
+    } else {
+      nextOutput.downloadUrl = htmlAsset.url;
+    }
     return nextOutput;
   }
 

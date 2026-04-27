@@ -11,7 +11,7 @@ interface HeaderProps {
 export function Header({ onHistoryClick, onLogoClick, onContentStrategyClick }: HeaderProps) {
   return (
     <header className="sticky top-0 z-50 border-b border-[#0b6b6f]/10 bg-white/88 shadow-[0_12px_36px_rgba(8,54,58,0.05)] backdrop-blur-xl supports-[backdrop-filter]:bg-white/82">
-      <div className="mx-auto w-full max-w-[1500px] px-6 py-4">
+      <div className="mx-auto w-full max-w-[1800px] px-6 py-4 md:px-8 xl:px-12">
         <div className="flex items-center justify-between">
           <button onClick={onLogoClick} className="flex items-center gap-3 transition-opacity hover:opacity-80">
             <VeraLogoMark className="h-11 w-11 rounded-2xl shadow-sm" />

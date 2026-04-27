@@ -1,5 +1,7 @@
 import { generateText } from '../providers/openai.mjs';
 import { generateSpeechDataUrl } from '../providers/audio.mjs';
+import { tryRenderDesignExternally } from '../providers/design.mjs';
+import { tryRenderDocumentExternally } from '../providers/document.mjs';
 import { getProviderStackForContentType } from '../providers/registry.mjs';
 import { tryRenderPresentationExternally } from '../providers/presentation.mjs';
 import { searchWebSources } from '../providers/search.mjs';
@@ -21,7 +23,10 @@ function formatReferences(sources) {
 
   return [
     '## References',
-    ...sources.slice(0, 8).map((source) => `- ${source.title} — ${source.domain}${source.publishedYear ? ` (${source.publishedYear})` : ''}`),
+    ...sources.slice(0, 8).map((source, index) => {
+      const sourceId = source.sourceDocId || `SRC-${String(index + 1).padStart(3, '0')}`;
+      return `- ${sourceId}: ${source.title} — ${source.domain}${source.publishedYear ? ` (${source.publishedYear})` : ''}`;
+    }),
   ].join('\n');
 }
 
@@ -38,7 +43,10 @@ function buildSearchQuery(request) {
 
 function buildSystemPrompt(request, sources) {
   const sourceBlock = sources.length
-    ? sources.map((source, index) => `${index + 1}. ${source.title} — ${source.domain}${source.snippet ? ` — ${source.snippet}` : ''}`).join('\n')
+    ? sources.map((source, index) => {
+      const sourceId = source.sourceDocId || `SRC-${String(index + 1).padStart(3, '0')}`;
+      return `${sourceId}. ${source.title} — ${source.domain}${source.snippet ? ` — ${source.snippet}` : ''}${source.verbatimAnchor ? ` Anchor: ${source.verbatimAnchor}` : ''}`;
+    }).join('\n')
     : 'No web sources were captured for this run. Do not fabricate citations.';
 
   const formatInstructions = {
@@ -68,6 +76,7 @@ Rules:
 - Never output [SOURCE NEEDED], CLAIM_ID markers, or placeholder citations.
 - Write clean markdown with real headings.
 - Keep the copy presentation-ready and user-facing.
+- Keep factual claims traceable to the captured source set. Use the references section IDs as the audit trail; do not invent uncited facts.
 - If no sources are captured, do not invent statistics, trial outcomes, prevalence figures, study claims, or guideline statements.
 - If no sources are captured, keep the draft qualitative and clearly safe for later evidence enrichment.
 
@@ -203,6 +212,57 @@ function needsAudio(contentType) {
   return contentType === 'podcast';
 }
 
+function buildProviderArtifactLinks({ presentationRender, documentRender, designRender }) {
+  const links = [];
+
+  if (presentationRender?.provider) {
+    links.push({
+      stage: 'presentation',
+      provider: presentationRender.provider,
+      label: presentationRender.provider === 'gamma' ? 'Open in Gamma' : presentationRender.provider === 'plus-ai' ? 'Open provider export' : 'Open presentation asset',
+      viewUrl: presentationRender.gammaUrl || undefined,
+      downloadUrl: presentationRender.remoteUrl || undefined,
+      generationId: presentationRender.generationId || undefined,
+      note: presentationRender.provider === 'gamma'
+        ? 'Gamma-backed presentation export.'
+        : presentationRender.provider === 'plus-ai'
+          ? 'Provider-rendered editable presentation export.'
+          : undefined,
+    });
+  }
+
+  if (documentRender?.provider) {
+    links.push({
+      stage: 'document',
+      provider: documentRender.provider,
+      label: documentRender.provider === 'gamma' ? 'Open in Gamma' : 'Open long-form asset',
+      viewUrl: documentRender.gammaUrl || undefined,
+      downloadUrl: documentRender.remoteUrl || undefined,
+      generationId: documentRender.generationId || undefined,
+      note: documentRender.provider === 'gamma' ? 'Gamma-backed long-form export.' : undefined,
+    });
+  }
+
+  if (designRender?.provider) {
+    links.push({
+      stage: 'design',
+      provider: designRender.provider,
+      label: designRender.provider === 'canva' ? 'Edit in Canva' : designRender.provider === 'gamma' ? 'Open in Gamma' : 'Open design asset',
+      editUrl: designRender.editUrl || undefined,
+      viewUrl: designRender.viewUrl || designRender.gammaUrl || undefined,
+      downloadUrl: designRender.remoteUrl || undefined,
+      generationId: designRender.generationId || designRender.designId || undefined,
+      note: designRender.provider === 'canva'
+        ? 'Canva-backed design export with editable source.'
+        : designRender.provider === 'gamma'
+          ? 'Gamma-backed social export.'
+          : undefined,
+    });
+  }
+
+  return links;
+}
+
 export function supportsServerSideGeneration(contentType) {
   return SERVER_SUPPORTED_TYPES.has(contentType);
 }
@@ -237,6 +297,7 @@ export async function generateOutputOnServer(request) {
   const content = `${markdown.trim()}\n\n${formatReferences(sources)}`.trim();
   let providerStack = getProviderStackForContentType(request.contentType);
   let presentationRender = null;
+  let documentRender = null;
 
   if (request.contentType === 'presentation') {
     try {
@@ -260,14 +321,72 @@ export async function generateOutputOnServer(request) {
     }
   }
 
+  if (request.contentType === 'report' || request.contentType === 'white-paper') {
+    try {
+      documentRender = await tryRenderDocumentExternally({
+        request,
+        markdown: content,
+      });
+
+      if (documentRender?.provider) {
+        providerStack = {
+          ...providerStack,
+          document: documentRender.provider,
+        };
+      }
+    } catch (error) {
+      console.warn('[vera] External long-form render failed, using native fallback.', error);
+      providerStack = {
+        ...providerStack,
+        document: 'native',
+      };
+    }
+  }
+
+  let designRender = null;
+  if (request.contentType === 'social-post') {
+    try {
+      designRender = await tryRenderDesignExternally({
+        request,
+        contentType: 'social-post',
+        markdown: content,
+        sources,
+      });
+
+      if (designRender?.provider) {
+        providerStack = {
+          ...providerStack,
+          design: designRender.provider,
+        };
+      }
+    } catch (error) {
+      console.warn('[vera] External social-post render failed, using native fallback.', error);
+      providerStack = {
+        ...providerStack,
+        design: 'native',
+      };
+    }
+  }
+
+  const providerLinks = buildProviderArtifactLinks({
+    presentationRender,
+    documentRender,
+    designRender,
+  });
+
   return {
     contentType: request.contentType,
     content,
     textContent: content,
-    format: inferFormat(request.contentType),
+    format: documentRender ? 'pdf' : designRender ? 'image' : inferFormat(request.contentType),
     downloadUrl: request.contentType === 'podcast'
       ? (audioUrl || '#')
-      : presentationRender?.remoteUrl || '#',
+      : documentRender?.remoteUrl
+        ? documentRender.remoteUrl
+        : designRender?.viewUrl
+          ? designRender.viewUrl
+          : presentationRender?.remoteUrl || '#',
+    previewUrl: designRender?.previewUrl,
     audioUrl,
     market: request.market,
     audience: request.targetAudience,
@@ -275,6 +394,11 @@ export async function generateOutputOnServer(request) {
     sources,
     screenedSources: sources,
     providerStack,
+    providerLinks,
     __presentationBinary: presentationRender?.binary,
+    __documentBinary: documentRender?.binary,
+    __documentExtension: documentRender?.extension,
+    __designBinary: designRender?.binary,
+    __designExtension: designRender?.extension,
   };
 }

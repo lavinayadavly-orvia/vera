@@ -1,4 +1,5 @@
 import '../lib/load-env.mjs';
+import { generateGammaArtifact, getGammaRuntimeSettings, isGammaConfigured } from './gamma.mjs';
 
 const DESIGN_PROVIDER = String(process.env.DESIGN_PROVIDER || process.env.VITE_DESIGN_PROVIDER || 'native')
   .trim()
@@ -9,9 +10,6 @@ const CANVA_INFOGRAPHIC_TEMPLATE_ID = (process.env.CANVA_INFOGRAPHIC_TEMPLATE_ID
 const CANVA_SOCIAL_TEMPLATE_ID = (process.env.CANVA_SOCIAL_TEMPLATE_ID || '').trim();
 const CANVA_POLL_INTERVAL_MS = Number.parseInt(process.env.CANVA_POLL_INTERVAL_MS || '4000', 10);
 const CANVA_TIMEOUT_MS = Number.parseInt(process.env.CANVA_TIMEOUT_MS || '180000', 10);
-const GAMMA_API_KEY = (process.env.GAMMA_API_KEY || '').trim();
-const GAMMA_BASE_URL = (process.env.GAMMA_BASE_URL || 'https://public-api.gamma.app/v1.0').trim();
-
 function getSelectedDesignProvider() {
   if (DESIGN_PROVIDER === 'canva') return 'canva';
   if (DESIGN_PROVIDER === 'gamma') return 'gamma';
@@ -37,6 +35,17 @@ function getCanvaTemplateId(contentType) {
   if (contentType === 'social-post') return CANVA_SOCIAL_TEMPLATE_ID;
   if (contentType === 'infographic') return CANVA_INFOGRAPHIC_TEMPLATE_ID;
   return '';
+}
+
+function getActiveDesignProvider(contentType) {
+  const selected = getSelectedDesignProvider();
+  if (selected === 'canva') {
+    return CANVA_ACCESS_TOKEN && Boolean(getCanvaTemplateId(contentType)) ? 'canva' : 'native';
+  }
+  if (selected === 'gamma') {
+    return contentType === 'social-post' && isGammaConfigured() ? 'gamma' : 'native';
+  }
+  return 'native';
 }
 
 function cleanText(value, fallback = '') {
@@ -113,9 +122,10 @@ function buildInfographicAutofillData({ request, infographicData, sources }) {
   }
 
   for (let actionIndex = 0; actionIndex < 4; actionIndex += 1) {
+    const action = actions[actionIndex];
     fields[`action_${actionIndex + 1}`] = {
       type: 'text',
-      text: cleanText(actions[actionIndex], 'Validate the evidence pack before publishing.'),
+      text: cleanText(typeof action === 'string' ? action : action?.text, 'Validate the evidence pack before publishing.'),
     };
   }
 
@@ -262,78 +272,100 @@ async function downloadBinary(url) {
 
 export async function tryRenderDesignExternally({ request, contentType, markdown, infographicData, sources }) {
   const selected = getSelectedDesignProvider();
-  const brandTemplateId = getCanvaTemplateId(contentType);
+  if (selected === 'canva') {
+    const brandTemplateId = getCanvaTemplateId(contentType);
 
-  if (selected !== 'canva' || !CANVA_ACCESS_TOKEN || !brandTemplateId) {
-    return null;
+    if (!CANVA_ACCESS_TOKEN || !brandTemplateId) {
+      return null;
+    }
+
+    const title = cleanText(request.prompt, contentType === 'social-post' ? 'Vera social post' : 'Vera infographic');
+    const data = buildCanvaAutofillData({
+      request,
+      contentType,
+      markdown,
+      infographicData,
+      sources,
+    });
+
+    const createdJob = await createCanvaAutofillJob({
+      brandTemplateId,
+      title,
+      data,
+    });
+    const autofillResult = createdJob.status === 'success' ? createdJob : await pollCanvaAutofillJob(createdJob.id);
+    const design = autofillResult?.result?.design;
+
+    if (!design?.id) {
+      throw new Error('Canva autofill completed without a design result.');
+    }
+
+    const exportJob = await createCanvaExportJob({
+      designId: design.id,
+      formatType: 'png',
+    });
+    const exportResult = exportJob.status === 'success' ? exportJob : await pollCanvaExportJob(exportJob.id);
+    const binary = await downloadBinary(exportResult.urls[0]);
+
+    return {
+      provider: 'canva',
+      binary,
+      extension: 'png',
+      previewUrl: design.thumbnail?.url || exportResult.urls[0],
+      editUrl: design.urls?.edit_url || design.url || null,
+      viewUrl: design.urls?.view_url || design.url || null,
+      designId: design.id,
+    };
   }
 
-  const title = cleanText(request.prompt, contentType === 'social-post' ? 'Vera social post' : 'Vera infographic');
-  const data = buildCanvaAutofillData({
-    request,
-    contentType,
-    markdown,
-    infographicData,
-    sources,
-  });
-
-  const createdJob = await createCanvaAutofillJob({
-    brandTemplateId,
-    title,
-    data,
-  });
-  const autofillResult = createdJob.status === 'success' ? createdJob : await pollCanvaAutofillJob(createdJob.id);
-  const design = autofillResult?.result?.design;
-
-  if (!design?.id) {
-    throw new Error('Canva autofill completed without a design result.');
+  if (selected === 'gamma' && contentType === 'social-post' && isGammaConfigured()) {
+    return generateGammaArtifact({
+      inputText: String(markdown || '').trim(),
+      format: 'social',
+      exportAs: 'png',
+      numCards: 1,
+      dimensions: '4:5',
+      additionalInstructions: [
+        'Create a polished social-ready layout.',
+        'Preserve the factual wording from the source text.',
+        'Do not invent new claims, citations, or statistics.',
+      ].join(' '),
+    });
   }
 
-  const exportJob = await createCanvaExportJob({
-    designId: design.id,
-    formatType: 'png',
-  });
-  const exportResult = exportJob.status === 'success' ? exportJob : await pollCanvaExportJob(exportJob.id);
-  const binary = await downloadBinary(exportResult.urls[0]);
-
-  return {
-    provider: 'canva',
-    binary,
-    extension: 'png',
-    previewUrl: design.thumbnail?.url || exportResult.urls[0],
-    editUrl: design.urls?.edit_url || design.url || null,
-    viewUrl: design.urls?.view_url || design.url || null,
-    designId: design.id,
-  };
+  return null;
 }
 
-export function getDesignProviderState() {
+export function getDesignProviderState(contentType = 'infographic') {
   const selected = getSelectedDesignProvider();
 
   if (selected === 'canva') {
     return {
       selected,
-      active: CANVA_ACCESS_TOKEN && hasCanvaTemplate() ? 'canva' : 'native',
+      active: getActiveDesignProvider(contentType),
       label: getProviderLabel(selected),
       configured: Boolean(CANVA_ACCESS_TOKEN),
       apiBaseUrl: CANVA_API_BASE_URL,
       note: CANVA_ACCESS_TOKEN
-        ? hasCanvaTemplate()
-          ? 'Canva autofill + export is enabled for configured Vera templates. Native rendering remains the fallback when a template is missing or a provider run fails.'
-          : 'Canva is selected, but no Vera Canva template IDs are configured. Vera uses the native renderer.'
+        ? getCanvaTemplateId(contentType)
+          ? 'Canva autofill + export is enabled for the configured Vera template. Native rendering remains the fallback when a provider run fails.'
+          : `Canva is selected, but no Vera Canva template ID is configured for ${contentType}. Vera uses the native renderer.`
         : 'Canva is selected, but CANVA_ACCESS_TOKEN is missing. Vera uses the native renderer.',
     };
   }
 
   if (selected === 'gamma') {
+    const gamma = getGammaRuntimeSettings();
     return {
       selected,
-      active: 'native',
+      active: getActiveDesignProvider(contentType),
       label: getProviderLabel(selected),
-      configured: Boolean(GAMMA_API_KEY),
-      baseUrl: GAMMA_BASE_URL,
-      note: GAMMA_API_KEY
-        ? 'Gamma routing is configured. Vera still falls back to the native renderer until the external adapter is enabled.'
+      configured: gamma.configured,
+      baseUrl: gamma.baseUrl,
+      note: gamma.configured
+        ? contentType === 'social-post'
+          ? 'Gamma social rendering is enabled. Vera falls back to the native renderer only if the provider run fails.'
+          : 'Gamma is selected, but infographic rendering stays native because Gamma is only enabled for social-post in Vera right now.'
         : 'Gamma is selected, but GAMMA_API_KEY is missing. Vera uses the native renderer.',
     };
   }

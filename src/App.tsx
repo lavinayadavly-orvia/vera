@@ -8,12 +8,12 @@ import { Landing } from '@/pages/Landing';
 import { generateDetailedContent } from '@/services/generator';
 import { getDeliveryReadinessError } from '@/services/deliveryContracts';
 import { getHostedFinalDeliverableUrl, getShareableOutputLabel, getShareableOutputUrl } from '@/services/outputAssets';
-import { completeBackendGeneration, createBackendGeneration, failBackendGeneration, isBackendRuntimeEnabled, supportsServerSideGeneration, waitForBackendGeneration } from '@/services/backendRuntime';
+import { completeBackendGeneration, createBackendGeneration, failBackendGeneration, getBackendGeneration, isBackendRuntimeEnabled, supportsServerSideGeneration, waitForBackendGeneration } from '@/services/backendRuntime';
 import { useToast } from '@/hooks/use-toast';
 import { Toaster } from '@/components/ui/toaster';
 import { analyticsService } from '@/services/analytics';
 import { hydrateOutputForVera } from '@/services/outputHydration';
-import type { ContentStrategySelection, GeneratedOutput, OutputIteration } from '@/types';
+import type { ContentStrategySelection, GeneratedOutput, GenerationRequest, OutputIteration } from '@/types';
 import { ChangeRequestForm, type ChangeRequest } from '@/components/ChangeRequestForm';
 
 interface DemoOutput {
@@ -289,6 +289,73 @@ function App() {
     setOutput(null);
   };
 
+  const handleOpenSavedGeneration = async (item: GenerationRequest) => {
+    setDemoMode(false);
+    setIsGenerating(true);
+    setBackendProgressLabel('Loading saved output...');
+    setBackendProgressDetail('Fetching the stored asset, sources, and compliance state from Vera.');
+
+    try {
+      if (!isBackendRuntimeEnabled()) {
+        throw new Error('Saved output restore requires the Vera backend runtime.');
+      }
+
+      const generation = await getBackendGeneration(item.id);
+      if (!generation.output) {
+        throw new Error('This saved generation does not have an output payload attached.');
+      }
+
+      const hydratedOutput = hydrateOutputForVera(generation.output, generation.request);
+      const iterationNumber = generation.request.iterationNumber || 1;
+
+      setOutput(hydratedOutput);
+      setCurrentPrompt(generation.request.prompt);
+      setBaseGenerationData({
+        prompt: generation.request.prompt,
+        contentType: generation.request.contentType,
+        market: generation.request.market,
+        apiNamespace: generation.request.apiNamespace,
+        tone: generation.request.tone,
+        length: generation.request.length,
+        scientificDepth: generation.request.scientificDepth,
+        targetAudience: generation.request.targetAudience,
+      });
+      setGenerationId(generation.id);
+      setCurrentIteration(iterationNumber);
+      setIterationHistory([
+        {
+          iterationNumber,
+          output: hydratedOutput,
+          changeRequest: generation.request.changeRequest,
+          timestamp: generation.updatedAt,
+        },
+      ]);
+      setShowChangeRequest(false);
+      setContentStrategyContext({
+        contentType: generation.request.contentType,
+        market: generation.request.market,
+        apiNamespace: generation.request.apiNamespace,
+        targetAudience: generation.request.targetAudience,
+      });
+
+      toast({
+        title: 'Saved Output Loaded',
+        description: 'The stored generation is open again with its current exports and evidence panels.',
+      });
+    } catch (error) {
+      console.error('Failed to restore saved generation:', error);
+      toast({
+        title: 'Saved Output Unavailable',
+        description: error instanceof Error ? error.message : 'The stored generation could not be reopened.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsGenerating(false);
+      setBackendProgressLabel(null);
+      setBackendProgressDetail(null);
+    }
+  };
+
   const handleRequestChanges = () => {
     setShowChangeRequest(true);
     toast({
@@ -560,7 +627,7 @@ function App() {
           onLogoClick={() => setShowLanding(true)}
         />
       
-      <main className="mx-auto w-full max-w-[1500px] px-6 py-10 md:py-12">
+      <main className="mx-auto w-full max-w-[1800px] px-6 py-10 md:px-8 md:py-12 xl:px-12">
         {!output ? (
           <div className="space-y-10">
             <div className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr] lg:items-start">
@@ -616,7 +683,7 @@ function App() {
             />
 
             {isGenerating && (
-              <div className="max-w-4xl mx-auto animate-fade-in">
+              <div className="w-full animate-fade-in">
                 <div className="rounded-[30px] border border-[#0b6b6f]/14 bg-white/92 p-8 text-center shadow-[0_20px_80px_rgba(11,107,111,0.08)] backdrop-blur-sm">
                   <div className="w-16 h-16 mx-auto border-4 border-primary border-t-transparent rounded-full animate-spin" />
                   <div>
@@ -651,16 +718,18 @@ function App() {
                 onEditApplied={(newOutput) => {
                   // Handle AI-suggested edits
                   setOutput(newOutput);
-                  toast({
-                    title: 'Edit Applied',
-                    description: 'Your content has been updated based on the suggestion.',
-                  });
+                  if (newOutput?.contentType !== 'infographic') {
+                    toast({
+                      title: 'Edit Applied',
+                      description: 'Your content has been updated based on the suggestion.',
+                    });
+                  }
                 }}
               />
             )}
             
             {isGenerating && (
-              <div className="max-w-4xl mx-auto mt-6 animate-fade-in">
+              <div className="mt-6 w-full animate-fade-in">
                 <div className="rounded-[30px] border border-[#0b6b6f]/14 bg-white/92 p-8 text-center shadow-[0_20px_80px_rgba(11,107,111,0.08)] backdrop-blur-sm">
                   <div className="w-16 h-16 mx-auto border-4 border-primary border-t-transparent rounded-full animate-spin" />
                   <div>
@@ -684,7 +753,8 @@ function App() {
       {showHistory && (
         <HistoryPanel 
           onClose={() => setShowHistory(false)}
-          onRestore={handleRestorePrompt}
+          onReusePrompt={handleRestorePrompt}
+          onOpenGeneration={handleOpenSavedGeneration}
         />
       )}
 

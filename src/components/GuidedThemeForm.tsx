@@ -222,7 +222,7 @@ export function GuidedThemeForm({ onGenerate, isGenerating, onDraftChange }: Gui
   const selectedFormatContract = getDeliveryContract(contentType);
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-6 animate-fade-in">
+    <div className="mx-auto w-full max-w-[1600px] space-y-6 animate-fade-in">
       <div className="mb-8 flex items-center justify-center gap-2">
         {[1, 2, 3].map((num) => (
           <div key={num} className="flex items-center gap-2">

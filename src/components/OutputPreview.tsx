@@ -1,7 +1,7 @@
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Download, Share2, Sparkles, ChevronLeft, ChevronRight, ExternalLink, Image, RefreshCw, Check, CheckCircle2, MessageSquare, ThumbsUp, Headphones, FileText, Code, Video } from 'lucide-react';
+import { Download, Share2, Sparkles, ChevronLeft, ChevronRight, ExternalLink, Image, RefreshCw, Check, MessageSquare, ThumbsUp, Headphones, FileText, Code, Video, Archive, ShieldCheck } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import type { GeneratedOutput } from '@/types';
 import { useState } from 'react';
@@ -11,12 +11,13 @@ import { analyticsService } from '@/services/analytics';
 import { SampleGalleryModal } from '@/components/SampleGalleryModal';
 import { sampleData } from '@/data/sampleData';
 import { getPrimaryVisualUrl, hasHostedFinalDeliverable } from '@/services/outputAssets';
-import { downloadAudioFile, downloadHtmlDocument, downloadJsonManifest, downloadMarkdown, downloadPresentationDeck, downloadPrimaryVisual, downloadStoryboard, downloadWordCompatibleDocument } from '@/utils/exporters';
+import { downloadAudioFile, downloadEvidencePack, downloadHostedAsset, downloadHtmlDocument, downloadJsonManifest, downloadMarkdown, downloadOutputBundle, downloadPresentationDeck, downloadPrimaryVisual, downloadStoryboard, downloadWordCompatibleDocument } from '@/utils/exporters';
 import { renderMarkdownToHtml } from '@/utils/markdownRenderer';
 import { ReferenceManagerPanel } from '@/components/ReferenceManagerPanel';
 import { ComplianceArchitecturePanel } from '@/components/ComplianceArchitecturePanel';
 import { ContentLibraryPanel } from '@/components/ContentLibraryPanel';
 import { AuditDashboardPanel } from '@/components/AuditDashboardPanel';
+import { InfographicLayoutEditor } from '@/components/InfographicLayoutEditor';
 
 interface OutputPreviewProps {
   output: GeneratedOutput;
@@ -35,10 +36,16 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
   const [currentSlide, setCurrentSlide] = useState(0);
   const [showSamples, setShowSamples] = useState(false);
   const [activeTab, setActiveTab] = useState<'feedback' | 'chat'>('chat');
+  const [isInfographicEditing, setIsInfographicEditing] = useState(false);
   const { toast } = useToast();
   const visibleSources = output.sources && output.sources.length > 0
     ? output.sources
     : output.screenedSources || [];
+  const hasEvidenceExports = visibleSources.length > 0
+    || Boolean(output.sourceGovernance)
+    || Boolean(output.operationalGuardrails)
+    || Boolean(output.complianceArchitecture);
+  const actionableProviderLinks = (output.providerLinks || []).filter((link) => link.editUrl || link.viewUrl || link.downloadUrl);
   const hasApprovedSources = Boolean(output.sources && output.sources.length > 0);
   const hasCarousel = output.carouselSlides && output.carouselSlides.length > 0;
   const totalSlides = hasCarousel ? output.carouselSlides!.length : 1;
@@ -47,6 +54,10 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
   const hasHostedPrimaryDeliverable = hasHostedFinalDeliverable(output);
 
   const getFormatLabel = () => {
+    if (output.contentType === 'infographic' && output.pdfUrl) {
+      return 'PDF Document';
+    }
+
     const formats: Record<string, string> = {
       'image': 'PNG Image',
       'pdf': 'PDF Document',
@@ -112,7 +123,7 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
     || isSocialPost
     || isWhitePaperContent
     || isVideoProductionPackage
-    || (isInfographic && !isHtmlDocument);
+    ;
   const isVideoFrames = output.format === 'video-frames';
   const videoCreativeDirection = output.videoPackage?.creativeDirection;
   const infographicFrameHeight = output.renderVariant === 'poster' ? 'h-[1123px]' : 'h-[1680px]';
@@ -121,6 +132,16 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
     ? 'aspect-[9/16]'
     : output.videoPackage?.aspectRatio === '1:1'
       ? 'aspect-square'
+      : 'aspect-video';
+  const videoRenderModeLabel = output.videoRender?.mode === 'extended-sequence'
+    ? 'Extended multi-scene render chain'
+    : output.videoRender?.mode === 'storyboard-package'
+      ? 'Native storyboard and narration package'
+      : 'Single text-to-video render';
+  const previewFrameClass = hasVideoScenes || hasRenderedVideo
+    ? videoAspectClass
+    : isInfographic
+      ? 'aspect-[4/5]'
       : 'aspect-video';
   const textDocumentLabel = isVideoScript
     ? 'Video Script & Storyboard'
@@ -148,8 +169,18 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
     return 'bg-muted text-muted-foreground border-border';
   };
 
+  const openProviderAsset = (url: string, label: string) => {
+    window.open(url, '_blank', 'noopener,noreferrer');
+    toast({
+      title: `${label} opened`,
+      description: 'The provider-backed asset is opening in a new tab.',
+    });
+  };
+
+  const shouldRenderVisualPreview = Boolean(displayUrl) && (!isInfographic || !isHtmlDocument);
+
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-6 animate-fade-in">
+    <div className="w-full max-w-none space-y-8 animate-fade-in">
       <div className="flex flex-col gap-4 rounded-[34px] border border-[#0b6b6f]/12 bg-white/94 px-6 py-6 shadow-[0_24px_90px_rgba(8,54,58,0.08)] backdrop-blur-md md:flex-row md:items-end md:justify-between md:px-8">
         <div>
           <p className="text-[11px] uppercase tracking-[0.24em] text-[#c96a22]">Output ready</p>
@@ -209,13 +240,27 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
                 {item}
               </span>
             ))}
+            {actionableProviderLinks.map((link) => (
+              <Button
+                key={`${link.stage}-${link.provider}-${link.label}`}
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8 rounded-full border-[#0b6b6f]/14 bg-[#fbffff] px-3 text-xs font-medium text-[#0b6b6f] hover:bg-[#eff8f8]"
+                onClick={() => openProviderAsset(link.editUrl || link.viewUrl || link.downloadUrl!, link.label)}
+                title={link.note || `${link.label} via ${link.provider}`}
+              >
+                <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
+                {link.label}
+              </Button>
+            ))}
           </div>
         </div>
       )}
 
-      <Card className="rounded-[34px] border border-[#0b6b6f]/12 bg-white/96 p-8 shadow-[0_28px_110px_rgba(8,54,58,0.08)] backdrop-blur-md">
+      <Card className="rounded-[34px] border border-[#0b6b6f]/12 bg-white/96 p-6 shadow-[0_28px_110px_rgba(8,54,58,0.08)] backdrop-blur-md md:p-8 xl:p-10">
         <div className="relative">
-          <div className={`${hasVideoScenes || hasRenderedVideo ? videoAspectClass : 'aspect-video'} flex items-center justify-center overflow-hidden rounded-[28px] bg-muted shadow-inner`}>
+          <div className={`${previewFrameClass} flex items-center justify-center overflow-hidden rounded-[28px] bg-muted shadow-inner`}>
             {hasRenderedVideo && !isInfographic ? (
               <div className="relative w-full h-full bg-black">
                 <video
@@ -238,7 +283,7 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
                   </div>
                 )}
               </div>
-            ) : displayUrl && !isInfographic ? (
+            ) : shouldRenderVisualPreview ? (
               <div className="relative w-full h-full">
                 <a href={displayUrl} target="_blank" rel="noopener noreferrer" className="block w-full h-full relative group cursor-pointer">
                   <img 
@@ -430,7 +475,7 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
                   <div className="text-xs uppercase tracking-widest text-muted-foreground mb-1">Render Status</div>
                   <div className="text-sm font-semibold capitalize">{output.videoRender.status}</div>
                   <div className="text-xs text-muted-foreground mt-1">
-                    {output.videoRender.mode === 'extended-sequence' ? 'Extended multi-scene render chain' : 'Single text-to-video render'}
+                    {videoRenderModeLabel}
                     {output.videoRender.note ? ` • ${output.videoRender.note}` : ''}
                   </div>
                 </div>
@@ -519,6 +564,15 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
                 Medical Affairs Render
               </h3>
               <div className="flex gap-2">
+                {isInfographic && (
+                  <Button
+                    variant={isInfographicEditing ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setIsInfographicEditing((current) => !current)}
+                  >
+                    {isInfographicEditing ? 'Preview Mode' : 'Edit Layout'}
+                  </Button>
+                )}
                 <Button 
                   variant="outline" 
                   size="sm"
@@ -536,15 +590,36 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
               </div>
             </div>
 
-            <div className="mt-4 w-full overflow-hidden rounded-[26px] border border-[#0b6b6f]/12 bg-white shadow-inner">
-               {/* Long-form infographic preview */}
-               <iframe 
-                 srcDoc={output.content}
-                 className={`w-full ${infographicFrameHeight} border-none`}
-                 title="Infographic Preview"
-                 sandbox="allow-same-origin allow-scripts"
-               />
-            </div>
+            {isInfographic && isInfographicEditing ? (
+              <InfographicLayoutEditor
+                html={output.content}
+                frameHeightClass={infographicFrameHeight}
+                onSave={(nextHtml) => {
+                  onEditApplied?.({
+                    ...output,
+                    content: nextHtml,
+                    downloadUrl: '#',
+                    previewUrl: undefined,
+                    pdfUrl: undefined,
+                  });
+                  setIsInfographicEditing(false);
+                  toast({
+                    title: 'Layout Saved',
+                    description: 'Your infographic layout changes are now applied to this output.',
+                  });
+                }}
+              />
+            ) : (
+              <div className="mt-4 w-full overflow-hidden rounded-[26px] border border-[#0b6b6f]/12 bg-white shadow-inner">
+                 {/* Long-form infographic preview */}
+                 <iframe
+                   srcDoc={output.content}
+                   className={`w-full ${infographicFrameHeight} border-none`}
+                   title="Infographic Preview"
+                   sandbox="allow-same-origin allow-scripts"
+                 />
+              </div>
+            )}
           </div>
         )}
 
@@ -997,10 +1072,94 @@ export function OutputPreview({ output, onDownload, onShare, onNewGeneration, on
       )}
 
       <div className="flex gap-3 flex-wrap">
+        <Button
+          onClick={async () => {
+            try {
+              analyticsService.trackDownloadClicked(output.contentType);
+              await downloadOutputBundle(output);
+              toast({
+                title: 'Bundle Downloaded',
+                description: 'Your Vera bundle ZIP includes the deliverable, sources, and review metadata.',
+              });
+            } catch (error) {
+              console.error(error);
+              toast({
+                title: 'Bundle Export Failed',
+                description: 'Vera could not package this output into a ZIP.',
+                variant: 'destructive',
+              });
+            }
+          }}
+          size="lg"
+          className="flex-1 text-base font-semibold"
+        >
+          <Archive className="w-5 h-5 mr-2" />
+          Bundle ZIP
+        </Button>
+        {hasEvidenceExports && (
+          <Button
+            onClick={async () => {
+              try {
+                analyticsService.trackDownloadClicked(output.contentType);
+                await downloadEvidencePack(output);
+                toast({
+                  title: 'Evidence Pack Downloaded',
+                  description: 'Your governed source, dossier, and compliance ZIP is ready.',
+                });
+              } catch (error) {
+                console.error(error);
+                toast({
+                  title: 'Evidence Pack Failed',
+                  description: 'Vera could not package the source and compliance files.',
+                  variant: 'destructive',
+                });
+              }
+            }}
+            size="lg"
+            variant="outline"
+            className="flex-1 text-base font-semibold"
+          >
+            <ShieldCheck className="w-5 h-5 mr-2" />
+            Evidence Pack
+          </Button>
+        )}
         {(isTextDocument || isHtmlDocument) && (
           <Button
             onClick={() => {
               analyticsService.trackDownloadClicked(output.contentType);
+              if (isHtmlDocument && output.contentType === 'infographic' && output.pdfUrl) {
+                downloadHostedAsset(
+                  output.pdfUrl,
+                  `${(output.theme || 'vera_infographic').replace(/\s+/g, '_').toLowerCase().slice(0, 48)}.pdf`,
+                );
+                toast({
+                  title: 'PDF Download Started',
+                  description: 'Your infographic PDF is downloading.'
+                });
+                return;
+              }
+
+              if (isHtmlDocument && output.contentType === 'infographic') {
+                import('@/utils/pdfGenerator').then(async ({ generateAndDownloadHtmlPDF }) => {
+                  await generateAndDownloadHtmlPDF(
+                    output.content,
+                    `${(output.theme || 'vera_infographic').replace(/\s+/g, '_').toLowerCase().slice(0, 48)}.pdf`,
+                  );
+                  toast({
+                    title: 'PDF Downloaded',
+                    description: 'Your infographic PDF was exported directly from the Vera render.',
+                  });
+                }).catch((error) => {
+                  console.error(error);
+                  toast({
+                    title: 'PDF Export Failed',
+                    description: 'Vera could not export this infographic as PDF. Try HTML export instead.',
+                    variant: 'destructive',
+                  });
+                });
+                return;
+              }
+
               if (isHtmlDocument) {
                 const printWindow = window.open('', '_blank');
                 if (printWindow) {

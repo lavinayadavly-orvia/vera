@@ -13,6 +13,17 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function downloadBinary(url) {
+  const response = await fetch(url);
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(`Video asset download failed (${response.status}): ${message}`);
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  return Buffer.from(arrayBuffer);
+}
+
 async function lumaRequest(path, init) {
   const response = await fetch(`${LUMA_BASE_URL}${path}`, {
     ...init,
@@ -122,8 +133,13 @@ export async function renderVideoSequence({ prompt, aspectRatio, scenes, creativ
     throw new Error('Video provider completed without a downloadable video asset.');
   }
 
+  const remoteUrl = latestGeneration.assets.video;
+  const binary = await downloadBinary(remoteUrl);
+
   return {
-    renderedVideoUrl: latestGeneration.assets.video,
+    renderedVideoUrl: remoteUrl,
+    remoteUrl,
+    binary,
     summary: {
       provider: 'luma',
       status: 'completed',

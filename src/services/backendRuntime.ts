@@ -71,6 +71,10 @@ export async function listBackendGenerations(limit = 50): Promise<BackendGenerat
 }
 
 export function toGenerationHistoryItem(record: BackendGenerationRecord): GenerationRequest {
+  const sourceCount = record.output?.sources?.length
+    || record.output?.screenedSources?.length
+    || 0;
+
   return {
     id: record.id,
     userId: record.request.userId,
@@ -79,6 +83,10 @@ export function toGenerationHistoryItem(record: BackendGenerationRecord): Genera
     status: record.status === 'queued' ? 'pending' : record.status,
     outputUrl: record.output?.downloadUrl,
     outputFormat: record.output?.format,
+    market: record.output?.market || record.request.market,
+    audience: record.output?.audience || record.request.targetAudience,
+    sourceCount,
+    hasSavedOutput: Boolean(record.output),
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   };

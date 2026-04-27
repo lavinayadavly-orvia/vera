@@ -21,6 +21,10 @@ export interface GenerationRequest {
   status: 'pending' | 'processing' | 'completed' | 'failed';
   outputUrl?: string;
   outputFormat?: string;
+  market?: Market;
+  audience?: string;
+  sourceCount?: number;
+  hasSavedOutput?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -115,6 +119,7 @@ export interface ProviderStackSummary {
   text?: string;
   audio?: string;
   design?: string;
+  document?: string;
   presentation?: string;
   video?: string;
 }
@@ -393,6 +398,31 @@ export interface OperationalGuardrailReport {
 }
 
 export interface InfographicData {
+  hero?: {
+    kicker?: string;
+    title: string;
+    subtitle: string;
+  };
+  stats?: Array<{
+    value: string;
+    label: string;
+    colorClass?: string;
+    sourceId?: string;
+  }>;
+  sections?: Array<{
+    title: string;
+    bullets: string[];
+    colorClass?: string;
+    sourceId?: string;
+  }>;
+  actions?: Array<string | {
+    text: string;
+    sourceId?: string;
+  }>;
+  references?: Array<{
+    id: string;
+    citation: string;
+  }>;
   heroContent: {
     title: string;
     subtitle: string;
@@ -400,13 +430,16 @@ export interface InfographicData {
   mainText: {
     heading: string;
     body: string;
+    sourceId?: string;
   }[];
   insight: {
     statistic: string;
     description: string;
+    sourceId?: string;
   }[];
   takeaway: {
     point: string;
+    sourceId?: string;
   }[];
 }
 
@@ -418,6 +451,7 @@ export interface GeneratedOutput {
   format: string;
   downloadUrl: string;
   previewUrl?: string;
+  pdfUrl?: string;
   renderedVideoUrl?: string;
   audioUrl?: string;
   market?: Market;
@@ -434,11 +468,23 @@ export interface GeneratedOutput {
   regulatoryContentType?: RegulatoryContentType;
   complianceArchitecture?: ComplianceArchitectureSummary;
   providerStack?: ProviderStackSummary;
+  providerLinks?: ProviderArtifactLink[];
   videoThumbnail?: string;
   videoScenes?: VideoScene[];
   videoPackage?: VideoProductionPackage;
   videoRender?: VideoRenderSummary;
   infographicData?: InfographicData;
+}
+
+export interface ProviderArtifactLink {
+  stage: 'design' | 'presentation' | 'document' | 'video' | 'audio' | 'text';
+  provider: string;
+  label: string;
+  viewUrl?: string;
+  editUrl?: string;
+  downloadUrl?: string;
+  generationId?: string;
+  note?: string;
 }
 
 export interface CarouselSlide {
@@ -491,9 +537,9 @@ export interface VideoProductionPackage {
 }
 
 export interface VideoRenderSummary {
-  provider: 'luma';
+  provider: 'luma' | 'native';
   status: 'completed' | 'skipped' | 'failed';
-  mode: 'text-to-video' | 'extended-sequence';
+  mode: 'text-to-video' | 'extended-sequence' | 'storyboard-package';
   model: string;
   resolution: string;
   durationSeconds: number;

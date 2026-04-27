@@ -270,11 +270,28 @@ function createAndClickDownload(href: string, fileName?: string) {
   anchor.click();
 }
 
-function downloadBlob(content: BlobPart, type: string, fileName: string) {
-  const blob = new Blob([content], { type });
+function downloadExistingBlob(blob: Blob, fileName: string) {
   const url = URL.createObjectURL(blob);
   createAndClickDownload(url, fileName);
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+function toHostedDownloadUrl(url: string): string {
+  try {
+    const parsed = new URL(url, window.location.href);
+    if (/\/api\/assets\/[^/]+$/.test(parsed.pathname)) {
+      parsed.pathname = `${parsed.pathname}/download`;
+      return parsed.toString();
+    }
+  } catch {
+    // Fall through to the original URL for blob/data URLs or malformed values.
+  }
+  return url;
+}
+
+function downloadBlob(content: BlobPart, type: string, fileName: string) {
+  const blob = new Blob([content], { type });
+  downloadExistingBlob(blob, fileName);
 }
 
 export function getOutputFileBase(output: GeneratedOutput): string {
@@ -581,6 +598,285 @@ function buildStoryboardHtml(output: GeneratedOutput): string {
   </div>
 </body>
 </html>`;
+}
+
+function buildSourceCsv(output: GeneratedOutput): string {
+  const sources = output.sources && output.sources.length > 0
+    ? output.sources
+    : output.screenedSources || [];
+
+  if (sources.length === 0) {
+    return 'sourceDocId,title,domain,url,tier,sourceType,suitability,snippet,anchor,screeningSummary\n';
+  }
+
+  const escapeCsv = (value: unknown) => {
+    const text = String(value ?? '').replace(/\r?\n|\r/g, ' ').trim();
+    if (/[",]/.test(text)) {
+      return `"${text.replace(/"/g, '""')}"`;
+    }
+    return text;
+  };
+
+  const rows = sources.map((source, index) => ([
+    source.sourceDocId || `SRC-${String(index + 1).padStart(3, '0')}`,
+    source.title,
+    source.domain,
+    source.url || '',
+    source.tier || '',
+    source.sourceType || source.type,
+    source.suitability || '',
+    source.snippet || '',
+    source.verbatimAnchor || '',
+    source.screeningSummary || '',
+  ].map(escapeCsv).join(',')));
+
+  return [
+    'sourceDocId,title,domain,url,tier,sourceType,suitability,snippet,anchor,screeningSummary',
+    ...rows,
+  ].join('\n');
+}
+
+function inferExtensionFromMimeType(contentType?: string | null): string {
+  const normalized = String(contentType || '').toLowerCase();
+  if (normalized.includes('pdf')) return 'pdf';
+  if (normalized.includes('png')) return 'png';
+  if (normalized.includes('jpeg') || normalized.includes('jpg')) return 'jpg';
+  if (normalized.includes('svg')) return 'svg';
+  if (normalized.includes('gif')) return 'gif';
+  if (normalized.includes('webp')) return 'webp';
+  if (normalized.includes('mpeg') || normalized.includes('mp3')) return 'mp3';
+  if (normalized.includes('wav')) return 'wav';
+  if (normalized.includes('mp4')) return 'mp4';
+  if (normalized.includes('json')) return 'json';
+  if (normalized.includes('html')) return 'html';
+  if (normalized.includes('plain')) return 'txt';
+  if (normalized.includes('powerpoint') || normalized.includes('presentationml')) return 'pptx';
+  return 'bin';
+}
+
+function inferExtensionFromUrl(url: string, fallback = 'bin'): string {
+  const cleanUrl = url.split('?')[0].split('#')[0];
+  const match = cleanUrl.match(/\.([a-z0-9]{2,8})$/i);
+  return match?.[1]?.toLowerCase() || fallback;
+}
+
+async function fetchAssetBinary(url: string): Promise<{ bytes: Uint8Array; contentType: string; extension: string } | null> {
+  try {
+    const response = await fetch(toHostedDownloadUrl(url), { credentials: 'omit' });
+    if (!response.ok) {
+      return null;
+    }
+    const blob = await response.blob();
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    const extension = inferExtensionFromUrl(url, inferExtensionFromMimeType(blob.type));
+    return {
+      bytes,
+      contentType: blob.type || 'application/octet-stream',
+      extension,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function addRemoteAssetToZip(zip: any, pathWithoutExtension: string, url: string, fallbackExtension = 'bin') {
+  const asset = await fetchAssetBinary(url);
+  if (asset) {
+    zip.file(`${pathWithoutExtension}.${asset.extension || fallbackExtension}`, asset.bytes);
+    return;
+  }
+
+  zip.file(`${pathWithoutExtension}.url`, `${url}\n`);
+}
+
+function buildBundleMetadata(output: GeneratedOutput) {
+  return {
+    theme: output.theme || 'Vera Output',
+    contentType: output.contentType,
+    format: output.format,
+    market: output.market || null,
+    audience: output.audience || null,
+    extent: output.extent || null,
+    namespace: output.apiNamespace || null,
+    deliveryContract: output.deliveryContract || null,
+    providerStack: output.providerStack || null,
+    providerLinks: output.providerLinks || [],
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+function buildEvidencePackReadme(output: GeneratedOutput): string {
+  const lines = [
+    'Vera Evidence Pack',
+    '',
+    `Theme: ${output.theme || 'Untitled output'}`,
+    `Content type: ${output.contentType}`,
+    `Format: ${output.format}`,
+    `Market: ${output.market || 'n/a'}`,
+    `Audience: ${output.audience || 'n/a'}`,
+    '',
+    'Contents:',
+    '- metadata/output.json: top-level output metadata',
+    '- sources/sources.json: captured or screened sources',
+    '- sources/sources.csv: flat source ledger for spreadsheet use',
+  ];
+
+  if (output.sourceGovernance) {
+    lines.push('- governance/source_governance.json: format-specific source rules');
+  }
+  if (output.operationalGuardrails) {
+    lines.push('- governance/operational_guardrails.json: locks, warnings, readability, evidence map');
+  }
+  if (output.complianceArchitecture?.dossier) {
+    lines.push('- compliance/evidence_dossier.json: claim-to-source mapping dossier');
+  }
+  if (output.complianceArchitecture) {
+    lines.push('- compliance/*.json: rules engine, block library, withdrawal monitor, snapshots, security, veeva scaffolding');
+  }
+
+  return lines.join('\n');
+}
+
+function buildOutputBundleReadme(output: GeneratedOutput): string {
+  const lines = [
+    'Vera Output Bundle',
+    '',
+    `Theme: ${output.theme || 'Untitled output'}`,
+    `Content type: ${output.contentType}`,
+    `Format: ${output.format}`,
+    `Primary deliverable: ${output.deliveryContract?.primaryDeliverable || output.format}`,
+    '',
+    'This bundle contains the final output plus the source and compliance files that support it.',
+    '',
+    'Contents:',
+    '- metadata/output.json: top-level output metadata',
+    '- deliverable/*: final output files and editable content',
+    '- sources/*: captured source ledger and CSV export',
+    '- compliance/*: dossier, rules, and audit files when available',
+  ];
+
+  if (output.contentType === 'video') {
+    lines.push('- video/*: storyboard, scene manifest, scene frames, and narration asset');
+  }
+
+  return lines.join('\n');
+}
+
+function addEvidenceFilesToZip(zip: any, output: GeneratedOutput) {
+  const sources = output.sources && output.sources.length > 0
+    ? output.sources
+    : output.screenedSources || [];
+
+  zip.file('metadata/output.json', JSON.stringify(buildBundleMetadata(output), null, 2));
+  zip.file('sources/sources.json', JSON.stringify(sources, null, 2));
+  zip.file('sources/sources.csv', buildSourceCsv(output));
+
+  if (output.sourceGovernance) {
+    zip.file('governance/source_governance.json', JSON.stringify(output.sourceGovernance, null, 2));
+  }
+
+  if (output.operationalGuardrails) {
+    zip.file('governance/operational_guardrails.json', JSON.stringify(output.operationalGuardrails, null, 2));
+  }
+
+  if (output.complianceArchitecture) {
+    zip.file('compliance/architecture.json', JSON.stringify(output.complianceArchitecture, null, 2));
+    zip.file('compliance/rules_engine.json', JSON.stringify(output.complianceArchitecture.rulesEngine, null, 2));
+    zip.file('compliance/content_library.json', JSON.stringify(output.complianceArchitecture.contentLibrary, null, 2));
+    zip.file('compliance/withdrawal_monitor.json', JSON.stringify(output.complianceArchitecture.withdrawalMonitor, null, 2));
+    zip.file('compliance/audit_dashboard.json', JSON.stringify(output.complianceArchitecture.auditDashboard, null, 2));
+    zip.file('compliance/security.json', JSON.stringify(output.complianceArchitecture.security, null, 2));
+    zip.file('compliance/veeva.json', JSON.stringify(output.complianceArchitecture.veeva, null, 2));
+    zip.file('compliance/snapshots.json', JSON.stringify(output.complianceArchitecture.snapshots, null, 2));
+    if (output.complianceArchitecture.dossier) {
+      zip.file('compliance/evidence_dossier.json', JSON.stringify(output.complianceArchitecture.dossier, null, 2));
+    }
+  }
+}
+
+export async function downloadEvidencePack(output: GeneratedOutput) {
+  const { default: JSZip } = await import('jszip');
+  const zip = new JSZip();
+  zip.file('README.txt', buildEvidencePackReadme(output));
+  addEvidenceFilesToZip(zip, output);
+
+  const blob = await zip.generateAsync({ type: 'blob' });
+  downloadExistingBlob(blob, `${getOutputFileBase(output)}_evidence_pack.zip`);
+}
+
+export async function downloadOutputBundle(output: GeneratedOutput) {
+  const { default: JSZip } = await import('jszip');
+  const zip = new JSZip();
+  zip.file('README.txt', buildOutputBundleReadme(output));
+  addEvidenceFilesToZip(zip, output);
+
+  if (output.textContent) {
+    zip.file('deliverable/content.md', buildMarkdownContent(output));
+  }
+
+  if (output.content) {
+    if (output.format === 'html' || output.content.trim().startsWith('<')) {
+      zip.file('deliverable/render.html', output.content);
+    } else {
+      zip.file('deliverable/content.txt', output.content);
+    }
+  }
+
+  if (output.contentType === 'infographic') {
+    zip.file('deliverable/storyboard.html', buildDocumentHtml(output));
+    if (output.pdfUrl) {
+      await addRemoteAssetToZip(zip, 'deliverable/final', output.pdfUrl, 'pdf');
+    }
+    if (output.previewUrl) {
+      await addRemoteAssetToZip(zip, 'deliverable/preview', output.previewUrl, 'html');
+    }
+  } else if (output.contentType === 'presentation' && output.downloadUrl) {
+    await addRemoteAssetToZip(zip, 'deliverable/final', output.downloadUrl, 'pptx');
+  } else if (['document', 'report', 'white-paper', 'social-post'].includes(output.contentType) && output.downloadUrl && output.downloadUrl !== '#') {
+    await addRemoteAssetToZip(zip, 'deliverable/final', output.downloadUrl, inferExtensionFromUrl(output.downloadUrl, 'html'));
+  }
+
+  if (output.audioUrl) {
+    await addRemoteAssetToZip(zip, 'media/audio', output.audioUrl, 'mp3');
+  }
+
+  const primaryVisualUrl = getPrimaryVisualUrl(output);
+  if (primaryVisualUrl) {
+    await addRemoteAssetToZip(zip, 'media/primary_visual', primaryVisualUrl, inferExtensionFromUrl(primaryVisualUrl, 'png'));
+  }
+
+  if (output.contentType === 'video') {
+    zip.file('video/storyboard.html', buildStoryboardHtml(output));
+    zip.file('video/scene_manifest.json', JSON.stringify({
+      title: output.theme,
+      contentType: output.contentType,
+      scenes: output.videoScenes || [],
+      videoPackage: output.videoPackage || null,
+      videoRender: output.videoRender || null,
+    }, null, 2));
+
+    if (output.videoPackage) {
+      zip.file('video/video_package.json', JSON.stringify(output.videoPackage, null, 2));
+    }
+
+    if (output.renderedVideoUrl) {
+      await addRemoteAssetToZip(zip, 'video/final_render', output.renderedVideoUrl, 'mp4');
+    }
+
+    for (const scene of output.videoScenes || []) {
+      if (scene.imageUrl) {
+        await addRemoteAssetToZip(
+          zip,
+          `video/scenes/scene_${String(scene.sceneNumber).padStart(2, '0')}`,
+          scene.imageUrl,
+          inferExtensionFromUrl(scene.imageUrl, 'png'),
+        );
+      }
+    }
+  }
+
+  const blob = await zip.generateAsync({ type: 'blob' });
+  downloadExistingBlob(blob, `${getOutputFileBase(output)}_bundle.zip`);
 }
 
 export function downloadMarkdown(output: GeneratedOutput) {
@@ -895,11 +1191,15 @@ export function downloadJsonManifest(output: GeneratedOutput, manifestName: stri
 
 export function downloadAudioFile(output: GeneratedOutput) {
   if (!output.audioUrl) return;
-  createAndClickDownload(output.audioUrl, `${getOutputFileBase(output)}.mp3`);
+  createAndClickDownload(toHostedDownloadUrl(output.audioUrl), `${getOutputFileBase(output)}.mp3`);
 }
 
 export function downloadPrimaryVisual(output: GeneratedOutput) {
   const assetUrl = getPrimaryVisualUrl(output);
   if (!assetUrl) return;
-  createAndClickDownload(assetUrl);
+  createAndClickDownload(toHostedDownloadUrl(assetUrl));
+}
+
+export function downloadHostedAsset(url: string, fileName?: string) {
+  createAndClickDownload(toHostedDownloadUrl(url), fileName);
 }

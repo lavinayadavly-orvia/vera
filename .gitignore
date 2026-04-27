@@ -27,3 +27,8 @@ dist-ssr
 .env
 .env.*
 !.env.example
+
+# Vera local runtime data
+server/data/runtime-store.sqlite
+server/data/assets/
+server/data/qc-runs/

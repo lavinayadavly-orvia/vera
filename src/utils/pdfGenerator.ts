@@ -337,3 +337,66 @@ export function generateAndDownloadPDF(content: string, metadata: PDFMetadata) {
   const slug = metadata.theme.replace(/\s+/g, '_').toLowerCase().slice(0, 40);
   doc.save(`vera_${slug}.pdf`);
 }
+
+export async function generateAndDownloadHtmlPDF(html: string, fileName: string) {
+  const iframe = document.createElement('iframe');
+  iframe.style.position = 'fixed';
+  iframe.style.right = '0';
+  iframe.style.bottom = '0';
+  iframe.style.width = '794px';
+  iframe.style.height = '1123px';
+  iframe.style.opacity = '0';
+  iframe.style.pointerEvents = 'none';
+  iframe.style.border = '0';
+  iframe.setAttribute('aria-hidden', 'true');
+
+  document.body.appendChild(iframe);
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      iframe.onload = () => resolve();
+      iframe.onerror = () => reject(new Error('Failed to load infographic HTML into export frame.'));
+      iframe.srcdoc = html;
+    });
+
+    const exportDocument = iframe.contentDocument;
+    if (!exportDocument) {
+      throw new Error('Export frame document is unavailable.');
+    }
+
+    if (exportDocument.fonts?.ready) {
+      await exportDocument.fonts.ready;
+    }
+
+    await new Promise((resolve) => window.setTimeout(resolve, 300));
+
+    const target = exportDocument.body;
+    if (!target) {
+      throw new Error('Export frame body is unavailable.');
+    }
+
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'pt',
+      format: 'a4',
+    });
+
+    await doc.html(target, {
+      x: 0,
+      y: 0,
+      width: 595.28,
+      windowWidth: 794,
+      margin: [0, 0, 0, 0],
+      autoPaging: 'slice',
+      html2canvas: {
+        scale: 1.6,
+        useCORS: true,
+        backgroundColor: '#edf4ef',
+      },
+    });
+
+    doc.save(fileName);
+  } finally {
+    iframe.remove();
+  }
+}

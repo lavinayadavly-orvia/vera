@@ -5,8 +5,13 @@ import { randomUUID } from 'node:crypto';
 function getExtensionForMime(mimeType) {
   if (mimeType.includes('application/vnd.openxmlformats-officedocument.presentationml.presentation')) return 'pptx';
   if (mimeType.includes('application/msword')) return 'doc';
+  if (mimeType.includes('application/pdf')) return 'pdf';
+  if (mimeType.includes('video/mp4')) return 'mp4';
   if (mimeType.includes('audio/mpeg')) return 'mp3';
   if (mimeType.includes('audio/wav')) return 'wav';
+  if (mimeType.includes('image/svg+xml')) return 'svg';
+  if (mimeType.includes('image/png')) return 'png';
+  if (mimeType.includes('image/jpeg')) return 'jpg';
   if (mimeType.includes('text/html')) return 'html';
   if (mimeType.includes('text/markdown')) return 'md';
   if (mimeType.includes('application/json')) return 'json';
@@ -19,6 +24,10 @@ function getMimeTypeForExtension(extension) {
       return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
     case 'doc':
       return 'application/msword';
+    case 'pdf':
+      return 'application/pdf';
+    case 'mp4':
+      return 'video/mp4';
     case 'html':
       return 'text/html; charset=utf-8';
     case 'md':
@@ -29,6 +38,13 @@ function getMimeTypeForExtension(extension) {
       return 'audio/mpeg';
     case 'wav':
       return 'audio/wav';
+    case 'svg':
+      return 'image/svg+xml; charset=utf-8';
+    case 'png':
+      return 'image/png';
+    case 'jpg':
+    case 'jpeg':
+      return 'image/jpeg';
     default:
       return 'application/octet-stream';
   }

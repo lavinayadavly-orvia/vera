@@ -2,19 +2,25 @@ import type { ContentType, DeliveryContractSummary } from '@/types';
 import { getConfiguredVideoProvider } from '@/services/videoProviders';
 
 const DESIGN_PROVIDER = (import.meta.env.VITE_DESIGN_PROVIDER || 'native').trim();
+const DOCUMENT_PROVIDER = (import.meta.env.VITE_DOCUMENT_PROVIDER || 'native').trim();
 const PRESENTATION_PROVIDER = (import.meta.env.VITE_PRESENTATION_PROVIDER || 'native').trim();
 const AUDIO_PROVIDER = (import.meta.env.VITE_AUDIO_PROVIDER || 'openai').trim().toLowerCase();
 
 function getDesignProviderLabel() {
-  if (DESIGN_PROVIDER === 'canva') return 'Canva routing (native fallback)';
-  if (DESIGN_PROVIDER === 'gamma') return 'Gamma routing (native fallback)';
+  if (DESIGN_PROVIDER === 'canva') return 'Canva design pipeline';
+  if (DESIGN_PROVIDER === 'gamma') return 'Gamma social pipeline';
   return 'Native infographic renderer';
 }
 
 function getPresentationProviderLabel() {
   if (PRESENTATION_PROVIDER === 'plus-ai') return 'Plus AI presentation pipeline';
-  if (PRESENTATION_PROVIDER === 'gamma') return 'Gamma routing (native fallback)';
+  if (PRESENTATION_PROVIDER === 'gamma') return 'Gamma presentation pipeline';
   return 'Native PPTX renderer';
+}
+
+function getDocumentProviderLabel() {
+  if (DOCUMENT_PROVIDER === 'gamma') return 'Gamma long-form pipeline';
+  return 'Native document renderer';
 }
 
 function getAudioProviderLabel() {
@@ -41,11 +47,11 @@ function getVideoContract(): DeliveryContractSummary {
   return {
     contentType: 'video',
     formatLabel: 'Video',
-    primaryDeliverable: 'MP4',
-    supportingDeliverables: ['Transcript', 'Captions'],
-    providerLabel: 'Video renderer required',
-    readiness: 'provider-required',
-    note: 'A real video render provider must be configured before Video can be delivered as a final MP4.',
+    primaryDeliverable: 'Storyboard + Audio',
+    supportingDeliverables: ['Scene frames', 'Transcript', 'Production JSON'],
+    providerLabel: 'Native video package',
+    readiness: 'ready',
+    note: 'Delivers a scene-frame storyboard, narration track, and production package now. Configure Luma to add final MP4 rendering.',
     finalOnly: true,
   };
 }
@@ -56,13 +62,15 @@ export function getDeliveryContract(contentType: ContentType): DeliveryContractS
       return {
         contentType,
         formatLabel: 'Infographic',
-        primaryDeliverable: 'HTML / PDF',
+        primaryDeliverable: DESIGN_PROVIDER === 'canva' ? 'PNG Design' : 'HTML / PDF',
         supportingDeliverables: ['PNG export', 'Source pack'],
         providerLabel: getDesignProviderLabel(),
         readiness: 'ready',
         note: DESIGN_PROVIDER === 'native'
           ? 'Delivers an exportable visual asset with structured source-backed content.'
-          : 'External design routing is configured, with Vera’s native infographic renderer still active as the delivery fallback.',
+          : DESIGN_PROVIDER === 'canva'
+            ? 'Uses Canva template autofill and export when the server token and Vera template are configured, with native infographic rendering as the fallback.'
+            : 'Gamma is selected, but infographic rendering currently stays native in Vera while Gamma remains enabled only for social-post outputs.',
         finalOnly: true,
       };
     case 'white-paper':
@@ -71,9 +79,11 @@ export function getDeliveryContract(contentType: ContentType): DeliveryContractS
         formatLabel: 'White Paper',
         primaryDeliverable: 'PDF',
         supportingDeliverables: ['DOC', 'Markdown', 'HTML'],
-        providerLabel: 'Native document renderer',
+        providerLabel: getDocumentProviderLabel(),
         readiness: 'ready',
-        note: 'Delivers a final long-form document package.',
+        note: DOCUMENT_PROVIDER === 'gamma'
+          ? 'Uses Gamma for polished long-form PDF rendering when the server key is configured, with Vera falling back to native output if the provider run fails.'
+          : 'Delivers a final long-form document package.',
         finalOnly: true,
       };
     case 'presentation':
@@ -88,7 +98,7 @@ export function getDeliveryContract(contentType: ContentType): DeliveryContractS
           ? 'Delivers a real editable PowerPoint deck.'
           : PRESENTATION_PROVIDER === 'plus-ai'
             ? 'Uses Plus AI for presentation rendering when the server key is configured, with Vera falling back to native PPTX if the provider run fails.'
-            : 'Gamma presentation routing is selected, with Vera still falling back to native PPTX until the Gamma adapter is enabled.',
+            : 'Uses Gamma for presentation rendering when the server key is configured, with Vera falling back to native PPTX if the provider run fails.',
         finalOnly: true,
       };
     case 'podcast':
@@ -121,9 +131,11 @@ export function getDeliveryContract(contentType: ContentType): DeliveryContractS
         formatLabel: 'Report',
         primaryDeliverable: 'PDF',
         supportingDeliverables: ['DOC', 'Markdown', 'HTML'],
-        providerLabel: 'Native report renderer',
+        providerLabel: getDocumentProviderLabel(),
         readiness: 'ready',
-        note: 'Delivers a final evidence-led report package.',
+        note: DOCUMENT_PROVIDER === 'gamma'
+          ? 'Uses Gamma for polished long-form PDF rendering when the server key is configured, with Vera falling back to native output if the provider run fails.'
+          : 'Delivers a final evidence-led report package.',
         finalOnly: true,
       };
     case 'social-post':
@@ -136,7 +148,9 @@ export function getDeliveryContract(contentType: ContentType): DeliveryContractS
         readiness: 'ready',
         note: DESIGN_PROVIDER === 'native'
           ? 'Delivers export-ready social assets and supporting copy.'
-          : 'External design routing is configured, with Vera’s native social renderer still active as the delivery fallback.',
+          : DESIGN_PROVIDER === 'canva'
+            ? 'Uses Canva template autofill and export for social-ready visuals when the server token and Vera template are configured, with native copy rendering as the fallback.'
+            : 'Uses Gamma for social-post rendering when the server key is configured, with Vera falling back to native copy rendering if the provider run fails.',
         finalOnly: true,
       };
     default:

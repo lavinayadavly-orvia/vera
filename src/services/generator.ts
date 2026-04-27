@@ -2202,16 +2202,14 @@ Return only the scenes.`,
   });
 
   const configuredVideoProvider = getConfiguredVideoProvider();
-  if (!configuredVideoProvider) {
-    throw new Error('Video generation requires a configured render provider before Vera can deliver a final MP4.');
-  }
-
-  const renderedVideoPromise = renderVideoSequence({
-    prompt,
-    aspectRatio: videoPackaging.aspectRatio,
-    scenes: plannedScenes,
-    creativeDirection,
-  });
+  const renderedVideoPromise = configuredVideoProvider
+    ? renderVideoSequence({
+      prompt,
+      aspectRatio: videoPackaging.aspectRatio,
+      scenes: plannedScenes,
+      creativeDirection,
+    })
+    : Promise.resolve(null);
 
   const [videoScenes, renderedVideo] = await Promise.all([
     Promise.all(sceneImagePromises),
@@ -2247,11 +2245,16 @@ Requirements:
   const finalSources = sources.length > 0 ? sources.slice(0, 5) : [];
   const narrationScript = buildVideoNarrationScript(videoScenes);
   const totalDuration = videoScenes.reduce((sum, scene) => sum + scene.duration, 0);
-  if (!renderedVideo?.renderedVideoUrl) {
-    throw new Error('Video rendering failed before a final MP4 could be produced.');
-  }
-
-  const videoRenderSummary = renderedVideo.summary;
+  const hasRenderedVideo = Boolean(renderedVideo?.renderedVideoUrl);
+  const videoRenderSummary = renderedVideo?.summary || {
+    provider: 'native',
+    status: 'skipped',
+    mode: 'storyboard-package',
+    model: 'vera-native-scene-package',
+    resolution: videoPackaging.aspectRatio,
+    durationSeconds: totalDuration,
+    note: 'No external video renderer is configured. Vera produced a storyboard, scene frames, script, and narration package.',
+  };
   const videoContent = buildVideoProductionMarkdown(
     videoTitle,
     prompt,
@@ -2284,10 +2287,10 @@ Requirements:
     theme: videoTitle,
     audience: context.targetAudience,
     extent: context.sopGuidance ? 'Governed' : 'Standard',
-    format: 'mp4',
-    downloadUrl: renderedVideo.renderedVideoUrl,
+    format: hasRenderedVideo ? 'mp4' : 'video-frames',
+    downloadUrl: hasRenderedVideo ? renderedVideo!.renderedVideoUrl : '#',
     previewUrl: thumbnailData[0].url,
-    renderedVideoUrl: renderedVideo.renderedVideoUrl,
+    renderedVideoUrl: hasRenderedVideo ? renderedVideo!.renderedVideoUrl : undefined,
     audioUrl,
     videoThumbnail: thumbnailData[0].url,
     videoScenes: videoScenes,
