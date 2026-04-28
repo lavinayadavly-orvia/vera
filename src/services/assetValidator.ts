@@ -147,7 +147,7 @@ export function recommendFreeSource(purpose: string): string {
   }
 
   if (purposeLower.includes('custom') || purposeLower.includes('unique') || purposeLower.includes('branded')) {
-    return 'AI-Generated (blink.ai.generateImage) - Create unique, custom images on-the-fly';
+    return 'AI-generated visuals - Create unique, custom images on-the-fly';
   }
 
   if (purposeLower.includes('professional') || purposeLower.includes('business')) {
@@ -155,7 +155,7 @@ export function recommendFreeSource(purpose: string): string {
   }
 
   // Default recommendation
-  return 'Unsplash (https://unsplash.com) or use blink.ai.generateImage for AI-generated custom content';
+  return 'Unsplash (https://unsplash.com) or use Vera-approved AI generation for custom content';
 }
 
 /**

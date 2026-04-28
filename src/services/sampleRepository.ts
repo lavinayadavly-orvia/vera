@@ -11,7 +11,7 @@
  * - Icons8 Free (https://icons8.com) - Limited free icons under CC license
  * - Pixabay (https://pixabay.com) - Free images and vectors, Pixabay License
  * - Pexels (https://pexels.com) - Free stock photos, CC0
- * - generated via blink.ai.generateImage (AI-generated, no licensing issues)
+ * - AI-generated visuals from Vera's approved generators
  */
 
 export interface SampleAsset {
@@ -77,7 +77,7 @@ const APPROVED_FREE_SOURCES = {
   },
   ai_generated: {
     domain: 'ai-generated',
-    license: 'Generated via Blink AI - No licensing issues',
+    license: 'AI-generated - No licensing issues',
     freeToUse: true,
     requiresAttribution: false
   }
@@ -93,8 +93,8 @@ export function isApprovedFreeSource(url: string): boolean {
 
   const urlLower = url.toLowerCase();
 
-  // Check for AI-generated (blink.ai URLs)
-  if (urlLower.includes('blink') || urlLower.includes('gemini')) {
+  // Check for AI-generated assets from approved generators
+  if (urlLower.includes('openai') || urlLower.includes('gemini') || urlLower.includes('ai-generated')) {
     return true;
   }
 
@@ -125,7 +125,7 @@ export function getSourceFromUrl(url: string): SampleAsset['source'] | null {
   if (urlLower.includes('pixabay')) return 'pixabay';
   if (urlLower.includes('pexels')) return 'pexels';
   if (urlLower.includes('icons8')) return 'icons8-free';
-  if (urlLower.includes('blink') || urlLower.includes('gemini')) return 'ai-generated';
+  if (urlLower.includes('openai') || urlLower.includes('gemini') || urlLower.includes('ai-generated')) return 'ai-generated';
 
   return null;
 }

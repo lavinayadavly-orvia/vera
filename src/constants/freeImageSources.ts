@@ -14,7 +14,7 @@ export const FREE_IMAGE_SOURCES = {
     attribution: 'Not required, but appreciated',
     bestFor: ['Infographics', 'Presentations', 'Social posts', 'Hero images'],
     example: 'https://images.unsplash.com/photo-xxxxx',
-    usage: 'Automatic via blink.ai.generateImage or manual URLs'
+    usage: 'Automatic via Vera-approved image generation or manual URLs'
   },
 
   LUCIDE: {
@@ -74,14 +74,14 @@ export const FREE_IMAGE_SOURCES = {
   },
 
   AI_GENERATED: {
-    name: 'AI-Generated via Blink',
-    url: 'https://blink.new',
-    description: 'Custom images generated via Blink AI (blink.ai.generateImage)',
+    name: 'AI-Generated',
+    url: 'https://platform.openai.com',
+    description: 'Custom images generated via Vera-approved AI image generation',
     license: 'Generated content - No licensing issues',
     attribution: 'Not required',
     bestFor: ['Custom infographics', 'Unique visuals', 'Branded content'],
-    example: 'URLs from blink.ai.generateImage results',
-    usage: 'Automatic when generateImage is called in generator.ts'
+    example: 'URLs from Vera-managed AI image generation results',
+    usage: 'Automatic when image generation is called in generator.ts'
   }
 };
 
@@ -93,7 +93,7 @@ export const APPROVED_FREE_DOMAINS = [
   'images.pexels.com',
   'icons8.com',
   'cdn.jsdelivr.net', // For Feather icons
-  'blink', // For AI-generated images
+  'openai', // For AI-generated images
   'gemini', // For Gemini AI generated images
 ];
 
@@ -121,7 +121,7 @@ export const FREE_IMAGE_BEST_PRACTICES = [
   '6. Check Pixabay/Pexels APIs for programmatic access',
   '7. When using Unsplash API, credit the photographer when visible in UI',
   '8. Never use watermarked or trial versions of images',
-  '9. Verify AI-generated image URLs are from Blink (not external AI tools)',
+  '9. Verify AI-generated image URLs are from Vera-approved generators',
   '10. Document all image sources in sample metadata for compliance'
 ];
 
@@ -137,5 +137,5 @@ export const FREE_IMAGE_SEARCH_STRATEGY = {
   nature: 'Pexels or Pixabay nature galleries',
   technology: 'Unsplash tech category',
   people: 'Unsplash people category (verified diverse images)',
-  custom: 'Always use blink.ai.generateImage for unique branded content'
+  custom: 'Always use Vera-approved AI image generation for unique branded content'
 };

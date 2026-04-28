@@ -302,7 +302,7 @@ export function getSearchProviderState() {
     label: tavilyConfigured
       ? 'Tavily + open medical APIs + curated official-source fallback'
       : googleConfigured
-        ? 'Open medical APIs + Google CSE + curated fallback'
+        ? 'Open medical APIs + legacy Google search fallback'
         : 'Open medical APIs + curated official-source fallback',
     note: tavilyConfigured
       ? 'Vera uses Tavily for broad web discovery, then merges Europe PMC, ClinicalTrials.gov, and curated official sources.'

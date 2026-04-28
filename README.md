@@ -1,59 +1,41 @@
-# Enhanced Vite React TypeScript Template
+# Vera
 
-This template includes built-in detection for missing CSS variables between your Tailwind config and CSS files.
+Vera is a source-aware content studio for generating presentation, infographic, video, podcast, document, report, white-paper, and social-post outputs from a single brief.
 
-## Features
+## What Vera Does
 
-- **CSS Variable Detection**: Automatically detects if CSS variables referenced in `tailwind.config.cjs` are defined in `src/index.css`
-- **Enhanced Linting**: Includes ESLint, Stylelint, and custom CSS variable validation
-- **Shadcn/ui**: Pre-configured with all Shadcn components
-- **Modern Stack**: Vite + React + TypeScript + Tailwind CSS
+- Generates format-specific deliverables instead of one generic response
+- Screens and ranks sources through Tavily, Europe PMC, ClinicalTrials.gov, and curated official references
+- Carries source governance, operational guardrails, and compliance architecture into each output
+- Exports finished deliverables plus ZIP bundles and evidence packs
+- Stores generation history so prior outputs can be reopened with their evidence context intact
 
-## Available Scripts
+## Local Development
 
 ```bash
-# Run all linting (includes CSS variable check)
+npm install
+npm run dev
+node server/index.mjs
+```
+
+Frontend:
+- `http://127.0.0.1:3000`
+
+Backend:
+- `http://127.0.0.1:8787`
+
+## Useful Scripts
+
+```bash
+npm run build
 npm run lint
-
-# Check only CSS variables
-npm run check:css-vars
-
-# Individual linting
-npm run lint:js    # ESLint
-npm run lint:css   # Stylelint
+npm run lint:types
+npm run dev:platform
+node scripts/qc-platform.mjs
+node scripts/test-source-health.mjs "hypertension screening adults guideline"
 ```
 
-## CSS Variable Detection
+## Notes
 
-The template includes a custom script that:
-
-1. **Parses `tailwind.config.cjs`** to find all `var(--variable)` references
-2. **Parses `src/index.css`** to find all defined CSS variables (`--variable:`)
-3. **Cross-references** them to find missing definitions
-4. **Reports undefined variables** with clear error messages
-
-### Example Output
-
-When CSS variables are missing:
-```
-❌ Undefined CSS variables found in tailwind.config.cjs:
-   --sidebar-background
-   --sidebar-foreground
-   --sidebar-primary
-
-Add these variables to src/index.css
-```
-
-When all variables are defined:
-```
-✅ All CSS variables in tailwind.config.cjs are defined
-```
-
-## How It Works
-
-The detection happens during the `npm run lint` command, which will:
-- Exit with error code 1 if undefined variables are found
-- Show exactly which variables need to be added to your CSS file
-- Integrate seamlessly with your development workflow
-
-This prevents runtime CSS issues where Tailwind classes reference undefined CSS variables.
+- Generated runtime assets and local SQLite state live under `server/data/` and are ignored by git.
+- Provider-backed delivery is optional. Vera falls back to native rendering when a provider is not configured.
